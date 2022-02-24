@@ -1,0 +1,231 @@
+##########################################################################
+# Enable options
+##########################################################################
+
+ENABLE_UT=OFF
+ENABLE_MEMCHECK=OFF
+ENABLE_GCOV=OFF
+BUILD_TYPE=Debug
+
+##########################################################################
+# Meta configuration
+##########################################################################
+PROJECT_SOURCE_DIR = $(DCC_TOP_BUILDDIR)
+SCRIPT_PATH=$(DCC_TOP_BUILDDIR)/build
+OUT_PATH=$(DCC_TOP_BUILDDIR)/output
+MAKE_INSTALL_PREFIX=$(OUT_PATH)
+
+G_LIB_VERSION = 1
+LIB_MODE = comm
+LIB_MODE_COMM = comm
+CC = gcc
+
+CFLAGS=
+CPPFLAGS=
+LDFLAGS=
+LIBS=
+
+ifeq ($(BUILD_TYPE), Debug)
+    BUILD_MODE = Debug
+    OPTIMIZE_LEVEL = -O0 -g
+else ifeq ($(BUILD_TYPE), Release)
+    BUILD_MODE = Release
+    ENABLE_MEMCHECK = OFF
+    ENABLE_UT=OFF
+    OPTIMIZE_LEVEL = -O2 -g3
+else
+    $(error unsupported BUILD_TYPE is $(BUILD_TYPE))
+endif
+
+ifeq ($(ENABLE_MEMCHECK)_$(ENABLE_UT), ON_ON)
+    $(error unsupported ENABLE_MEMCHECK and ENABLE_UT both true!)
+endif
+
+ifeq ($(ENABLE_MEMCHECK), ON)
+    $(info ENABLE_MEMCHECK is on!)
+endif
+
+BUILD_TUPLE = $(shell uname -p)
+ifeq ($(BUILD_TUPLE), x86_64)
+    OS_OPTIONS = -msse4.2 -mcx16
+    COMPILE_MACRO += -DUSE_SSE42_CRC32C_WITH_RUNTIME_CHECK
+endif
+ifeq ($(BUILD_TUPLE), aarch64)
+    USE_SSE42_CRC32C_WITH_RUNTIME_CHECK = OFF
+    OS_OPTIONS = -march=armv8-a+crc -mtune=cortex-a72 -fsigned-char -g -ggdb3 -march=armv8-a+crc -funwind-tables
+endif
+
+SECURE_OPTIONS = -fno-common -fstack-protector-strong
+SECURE_LINK_OPTS = -Wl,-z,noexecstack -Wl,-z,relro,-z,now
+PROTECT_OPTIONS = -fPIC -g -std=gnu99 $(OPTIMIZE_LEVEL)
+WARNING_OPTIONS = -Wall -Wendif-labels -pipe
+OPTIMIZE_OPTIONS = -pipe -fno-aggressive-loop-optimizations -fno-expensive-optimizations -fno-omit-frame-pointer -fno-strict-aliasing -freg-struct-return
+CPPFLAGS += -DDCC_LITE
+GSTOR_OPTIONS = -DDCC_LITE -DKNL_PREFIX -DWSEC_AES_GCM_SUPPORT -DWSEC_COMPILE_CAC_OPENSSL -DWSEC_COMPILE_SDP -DWSEC_USE_OPENSSL_110 -D_GNU_SOURCE -D_LARGEFILE64_SOURCE -D_REENTRANT -D__PERF_STAT__ -Dgstor_EXPORTS
+
+# dcc lib version
+ifeq (x$(COMMIT_ID), x)
+    COMMIT_ID=$(shell git rev-parse HEAD)
+endif
+ifeq (x$(COMPILE_TIME), x)
+    COMPILE_TIME=$(shell bash -c "date \"+%Y-%m-%d %H:%M:%S\"")
+endif
+DCC_LIB_VERSION_LDFLAG = -DGETLIBVERSION=dcc_get_version \
+-Dg_DCC_LIB_VERSION="static char* str_DCC_LIB_VERSION=\"DCC $(BUILD_MODE) $(COMMIT_ID) compiled at $(COMPILE_TIME)\""
+
+# third part
+ifeq (x$(GCC_VERSION), x)
+    GCC_VERSION = 7.3.0
+endif
+
+LIBRARY_PATH = $(PROJECT_SOURCE_DIR)/library
+
+LIB_CBB_HOME = $(LIBRARY_PATH)/cbb
+CBB_DIRECTORY_INC = $(LIB_CBB_HOME)/include
+CBB_DIRECTORY_LIB = $(LIB_CBB_HOME)/lib
+
+LIB_DCF_HOME = $(LIBRARY_PATH)/dcf
+DCF_DIRECTORY_INC = $(LIB_DCF_HOME)/include
+DCF_DIRECTORY_LIB = $(LIB_DCF_HOME)/lib
+
+LIBAIO_INC = $(LIBRARY_PATH)/libaio/include
+
+SECURE_HOME = $(LIBRARY_PATH)/huawei_security
+SECURE_DIRECTORY_INC = $(SECURE_HOME)/include
+SECURE_DIRECTORY_LIB = $(SECURE_HOME)/lib
+
+CJSON_DIRECTORY_INC = $(LIBRARY_PATH)/cJSON/include
+CJSON_DIRECTORY_LIB = $(LIBRARY_PATH)/cJSON/lib
+
+SSL_DIRECTORY_INC = $(LIBRARY_PATH)/openssl/include \
+        $(LIBRARY_PATH)/openssl/include/openssl \
+        $(LIBRARY_PATH)/openssl/include/security
+SSL_DIRECTORY_LIB = $(LIBRARY_PATH)/openssl/lib
+
+ZLIB_DIRECTORY_INC = $(LIBRARY_PATH)/zlib/include
+ZLIB_DIRECTORY_LIB = $(LIBRARY_PATH)/zlib/lib
+
+LZ4_DIRECTORY_INC = $(LIBRARY_PATH)/lz4/include
+LZ4_DIRECTORY_LIB = $(LIBRARY_PATH)/lz4/lib
+
+ZSTD_DIRECTORY_INC = $(LIBRARY_PATH)/zstd/include
+ZSTD_DIRECTORY_LIB = $(LIBRARY_PATH)/zstd/lib
+
+ZEKERNEL_DIRECTORY_LIB = $(LIBRARY_PATH)/zekernel/lib
+
+COMM_INC = \
+        $(PROJECT_SOURCE_DIR)/src/client \
+        $(PROJECT_SOURCE_DIR)/src/client/interface \
+        $(PROJECT_SOURCE_DIR)/src/executor \
+        $(PROJECT_SOURCE_DIR)/src/interface \
+        $(PROJECT_SOURCE_DIR)/src/network \
+        $(PROJECT_SOURCE_DIR)/src/server \
+        $(PROJECT_SOURCE_DIR)/src/storage \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor \
+        $(PROJECT_SOURCE_DIR)/src/tools \
+        $(PROJECT_SOURCE_DIR)/src/utils \
+        $(PROJECT_SOURCE_DIR)/src/utils/parse
+COMPONENT_INC = $(CBB_DIRECTORY_INC) \
+        $(DCF_DIRECTORY_INC)
+3RD_INC = $(LIBAIO_INC) \
+        $(SECURE_DIRECTORY_INC) \
+        $(CJSON_DIRECTORY_INC) \
+        $(SSL_DIRECTORY_INC) \
+        $(ZLIB_DIRECTORY_INC) \
+        $(LZ4_DIRECTORY_INC) \
+        $(ZSTD_DIRECTORY_INC)
+ZEKERNEL_INC = \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/common \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/common/variant \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/protocol \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/backup \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/buffer \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/common \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/daemon \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/flashback \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/include \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/index \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/lob \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/persist \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/replication \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/sequence \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/statistics \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/table \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/xact \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/tablespace \
+        $(PROJECT_SOURCE_DIR)/src/storage/gstor/zekernel/kernel/catalog
+
+3RD_LIB_PATH = $(SSL_DIRECTORY_LIB) $(ZSTD_DIRECTORY_LIB) $(ZLIB_DIRECTORY_LIB) $(LZ4_DIRECTORY_LIB) $(CJSON_DIRECTORY_LIB) $(SSL_DIRECTORY_LIB) $(ZEKERNEL_DIRECTORY_LIB) $(SECURE_DIRECTORY_LIB)
+COMPONENT_LIB_PATH = $(CBB_DIRECTORY_LIB) $(DCF_DIRECTORY_LIB)
+
+G_COMPILE_OPTIONS = $(OS_OPTIONS) $(OPTIMIZE_LEVEL) $(SECURE_OPTIONS) $(PROTECT_OPTIONS) $(WARNING_OPTIONS) $(OPTIMIZE_OPTIONS) $(CHECK_OPTIONS)
+
+G_LINK_OPTIONS = $(SECURE_LINK_OPTS)
+# secure opt
+SKIP_RPATH = TRUE
+
+COMPILE_OPTIONS += $(G_COMPILE_OPTIONS)
+CFLAGS += $(COMPILE_OPTIONS)
+CFLAGS += $(G_LINK_OPTIONS)
+# for link
+LDFLAGS += $(addprefix -L,$(3RD_LIB_PATH))
+
+CFLAGS += $(COMPILE_MACRO)
+
+# 3rd things that we needed:
+
+
+##########################################################################
+# Recursive make support
+##########################################################################
+# ----------------------
+# Instead of recursing through subdirectories with a for loop or
+# repeated $(MAKE) -C whatever calls, this is a little smarter: it
+# allows parallel make across directories and lets make -k and -q work
+# correctly.
+
+# We need the $(eval) function and order-only prerequisites, which are
+# available in GNU make 3.80.  That also happens to be the version
+# where the .VARIABLES variable was introduced, so this is a simple check.
+ifndef .VARIABLES
+$(error GNU make 3.80 or newer is required.  You are using version $(MAKE_VERSION))
+endif
+
+# This function is only for internal use below.  It should be called
+# using $(eval).  It will set up a target so that it recurses into
+# a given subdirectory.  Note that to avoid a nasty bug in make 3.80,
+# this function has to avoid using any complicated constructs (like
+# multiple targets on a line) and also not contain any lines that expand
+# to more than about 200 bytes.  This is why we make it apply to just one
+# subdirectory at a time, rather than to a list of subdirectories.
+# $1: target name, e.g., all
+# $2: subdir name
+# $3: target to run in subdir, usually same as $1
+standard_targets = all install installdirs uninstall distprep clean distclean maintainer-clean coverage check installcheck maintainer-check 2pccheck
+define _create_recursive_target
+.PHONY: $(1)-$(2)-recurse
+$(1): $(1)-$(2)-recurse
+$(1)-$(2)-recurse:
+	$$(MAKE) -C $(2) $(3)
+endef
+# Note that the use of $$ on the last line above is important; we want
+# $(MAKE) to be evaluated when the rule is run, not when the $(eval) is run
+# to create the rule.  This is necessary to get make -q working.
+
+# Call this function in a makefile that needs to recurse into subdirectories.
+# In the normal case all arguments can be defaulted.
+# $1: targets to make recursive (defaults to list of standard targets)
+# $2: list of subdirs (defaults to SUBDIRS variable)
+# $3: target to run in subdir (defaults to current element of $1)
+recurse = $(foreach target,$(if $1,$1,$(standard_targets)),$(foreach subdir,$(if $2,$2,$(SUBDIRS)),$(eval $(call _create_recursive_target,$(target),$(subdir),$(if $3,$3,$(target))))))
+
+# If a makefile's list of SUBDIRS varies depending on configuration, then
+# any subdirectories excluded from SUBDIRS should instead be added to
+# ALWAYS_SUBDIRS, and then it must call recurse_always as well as recurse.
+# This ensures that distprep, distclean, etc will apply to all subdirectories.
+# In the normal case all arguments will be defaulted.
+# $1: targets to make recursive (defaults to standard_always_targets)
+# $2: list of subdirs (defaults to ALWAYS_SUBDIRS variable)
+# $3: target to run in subdir (defaults to current element of $1)
+recurse_always = $(foreach target,$(if $1,$1,$(standard_always_targets)),$(foreach subdir,$(if $2,$2,$(ALWAYS_SUBDIRS)),$(eval $(call _create_recursive_target,$(target),$(subdir),$(if $3,$3,$(target))))))

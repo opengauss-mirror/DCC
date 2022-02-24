@@ -1,0 +1,166 @@
+cmake_minimum_required(VERSION 3.14.1)
+project(dcc)
+
+include(
+    "${PROJECT_SOURCE_DIR}/build/cmake_include/CMakeListsInclude.txt"
+)
+message(STATUS "BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
+if (${CMAKE_BUILD_TYPE} STREQUAL "Debug"
+     OR ${CMAKE_BUILD_TYPE} STREQUAL "")
+    message(STATUS "CMAKE_BUILD_TYPE is Debug")
+    set(CMAKE_BUILD_TYPE Debug)
+    add_compile_definitions(_DEBUG)
+elseif (${CMAKE_BUILD_TYPE} STREQUAL "Release")
+    message(STATUS "CMAKE_BUILD_TYPE is Release")
+    set(CMAKE_BUILD_TYPE Release)
+    set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
+else ()
+    message(FATAL_ERROR "unknown CMAKE_BUILD_TYPE = " ${CMAKE_BUILD_TYPE})
+endif ()
+
+set(CMAKE_INSTALL_PREFIX $ENV{dcc_install_prefix})
+
+set(CMAKE_C_FLAGS "-std=gnu99 ${CMAKE_C_FLAGS}")
+
+add_compile_options(-fPIC -Wall -MMD -fno-strict-aliasing -fsigned-char -fms-extensions -lpthread)
+add_compile_definitions(_GNU_SOURCE _LARGEFILE64_SOURCE KNL_PREFIX _REENTRANT __PERF_STAT__)
+add_link_options(-pie)
+add_link_options(-Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now)
+add_compile_options(-fvisibility=default -fstack-protector-strong --param ssp-buffer-size=4)
+
+# 安全编译选项
+set(CMAKE_SKIP_RPATH TRUE)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -ldl -pthread -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now")
+add_compile_options(-fno-common)
+add_compile_options(-Wtrampolines)
+add_compile_options(-freg-struct-return)
+add_compile_options(-pipe)
+add_compile_options(-Wl,-Bsymbolic)
+add_compile_options(-rdynamic)
+
+OPTION(ENABLE_GCOV "Enable gcov" OFF)
+message(STATUS "DCC ENABLE_GCOV = ${ENABLE_GCOV}")
+IF (ENABLE_GCOV AND NOT WIN32)
+    message(STATUS "gcov DCC enable")
+    SET(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fprofile-arcs -ftest-coverage -lgcov")
+    SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fprofile-arcs -ftest-coverage")
+    Add_Definitions(-DENABLE_GCOV)
+    SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fprofile-arcs -ftest-coverage")
+ENDIF()
+
+OPTION(ENABLE_EXPORT_API "Enable hidden internal api" OFF)
+message(STATUS "ENABLE_EXPORT_API = ${ENABLE_EXPORT_API}")
+IF (ENABLE_EXPORT_API)
+    add_compile_options(-fvisibility=hidden)
+ENDIF()
+
+option(ENABLE_DCC_LITE OFF)
+IF (ENABLE_DCC_LITE)
+    add_compile_definitions(DCC_LITE)
+    message(STATUS "DCC lite enable")
+ENDIF()
+
+execute_process(
+    COMMAND uname -m
+    OUTPUT_VARIABLE OS_ARCH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+set(CMAKE_SYSTEM_PROCESSOR ${OS_ARCH})
+if (OS_ARCH STREQUAL "aarch64")
+    option(USE_H1620 OFF)
+    if (USE_H1620)
+        add_compile_options(-march=armv8-a+crc+lse)
+        message(STATUS "Toolchain: Build aarch64 USE_H1620")
+    else ()
+        add_compile_options(-march=armv8-a+crc)
+    endif (USE_H1620)
+
+    add_compile_options(-mtune=cortex-a72 -fsigned-char -g -ggdb3 -march=armv8-a+crc -funwind-tables)
+else ()
+    add_compile_options(-msse4.2 )
+endif ()
+Add_Definitions(-DWSEC_COMPILE_CAC_OPENSSL -DWSEC_AES_GCM_SUPPORT -DWSEC_USE_OPENSSL_110 -DWSEC_COMPILE_SDP)
+
+## dcc include_directories
+set(DCC_CLIENT_PATH ${PROJECT_SOURCE_DIR}/src/client)
+set(DCC_EXECUTOR_PATH ${PROJECT_SOURCE_DIR}/src/executor)
+set(DCC_NETWORK_PATH ${PROJECT_SOURCE_DIR}/src/network)
+set(DCC_SERVER_PATH ${PROJECT_SOURCE_DIR}/src/server)
+set(DCC_STORAGE_PATH ${PROJECT_SOURCE_DIR}/src/storage)
+set(DCC_GSTOR_INC_PATH ${PROJECT_SOURCE_DIR}/src/storage/gstor)
+set(DCC_CTL_PATH ${PROJECT_SOURCE_DIR}/src/tools/dcc_ctl)
+set(DCC_ENCRYPT_PATH ${PROJECT_SOURCE_DIR}/src/tools/dcc_encrypt)
+set(DCC_UTILS_PATH ${PROJECT_SOURCE_DIR}/src/utils)
+set(DCC_PARSE_PATH ${PROJECT_SOURCE_DIR}/src/utils/parse)
+set(DCC_INTERFACE_PATH ${PROJECT_SOURCE_DIR}/src/interface)
+
+## other dependency include
+set(DCC_SECUREC_INC_PATH        ${CMAKE_CURRENT_SOURCE_DIR}/library/huawei_security/include)
+set(DCC_OPENSSL_PATH            ${CMAKE_CURRENT_SOURCE_DIR}/library/openssl/include)
+set(DCC_CJSON_PATH              ${CMAKE_CURRENT_SOURCE_DIR}/library/cJSON/include)
+set(DCC_LZ4_INC_PATH             ${CMAKE_CURRENT_SOURCE_DIR}/library/lz4/include)
+set(DCC_ZLIB_INC_PATH            ${CMAKE_CURRENT_SOURCE_DIR}/library/zlib/include)
+set(DCC_ZSTANDARD_INC_PATH       ${CMAKE_CURRENT_SOURCE_DIR}/library/zstd/include)
+set(DCC_LIBAIO_INC_PATH          ${CMAKE_CURRENT_SOURCE_DIR}/library/libaio/include)
+set(DCC_DCF_INC_PATH             ${CMAKE_CURRENT_SOURCE_DIR}/library/dcf/include)
+set(DCC_CBB_INC_PATH             ${CMAKE_CURRENT_SOURCE_DIR}/library/cbb/include)
+
+set(DCC_ZEKERNEL_KERNEL_PATH     ${CMAKE_CURRENT_SOURCE_DIR}/library/zekernel/include/kernel)
+set(DCC_ZEKERNEL_PROTOCOL_PATH   ${CMAKE_CURRENT_SOURCE_DIR}/library/zekernel/include/protocol)
+set(DCC_ZEKERNEL_COMMON_PATH     ${CMAKE_CURRENT_SOURCE_DIR}/library/zekernel/include/common)
+
+
+## lib
+set(SECUREC_LIB_PATH            ${CMAKE_CURRENT_SOURCE_DIR}/library/huawei_security/lib)
+set(OPENSSL_LIB_PATH            ${CMAKE_CURRENT_SOURCE_DIR}/library/openssl/lib)
+set(CJSON_LIB_PATH              ${CMAKE_CURRENT_SOURCE_DIR}/library/cJSON/lib)
+set(DCC_LZ4_LIB_PATH            ${CMAKE_CURRENT_SOURCE_DIR}/library/lz4/lib)
+set(DCC_ZLIB_LIB_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/library/zlib/lib)
+set(DCC_ZSTANDARD_LIB_PATH      ${CMAKE_CURRENT_SOURCE_DIR}/library/zstd/lib)
+set(DCC_ZEKERNEL_LIB_PATH       ${CMAKE_CURRENT_SOURCE_DIR}/library/zekernel/lib)
+set(DCC_DCF_LIB_PATH            ${CMAKE_CURRENT_SOURCE_DIR}/library/dcf/lib)
+set(DCC_CBB_LIB_PATH            ${CMAKE_CURRENT_SOURCE_DIR}/library/cbb/lib)
+
+## output path
+set (LIBRARY_OUTPUT_PATH        ${CMAKE_CURRENT_SOURCE_DIR}/output/lib)
+set (EXECUTABLE_OUTPUT_PATH     ${CMAKE_CURRENT_SOURCE_DIR}/output/bin)
+
+set(3RD_PATH $ENV{THIRD_BIN_PATH})
+set(PLAT_FORM_NAME $ENV{PLAT_FORM_STR})
+message(STATUS "ENABLE_MEMCHECK = ${ENABLE_MEMCHECK}")
+if (ENABLE_MEMCHECK)
+    message("add memcheck dependencies.")
+    if ("x${GCC_VERSION}" STREQUAL "x")
+        set(GCC_VERSION "7.3.0")
+    endif ()
+    if (("x${3RD_PATH}" STREQUAL "x" ))
+        message("3rd path is empty")
+    else ()
+        message("3rd path is ${3RD_PATH}")
+        set(3RD_DEPENDENCY_ROOT ${3RD_PATH}/dependency/${PLAT_FORM_NAME})
+        set(MEMCHECK_HOME ${3RD_DEPENDENCY_ROOT}/memcheck/debug)
+        set(MEMCHECK_LIB_PATH ${MEMCHECK_HOME}/gcc${GCC_VERSION}/lib)
+        set(MEMCHECK_LINK_DIRECTORIES ${MEMCHECK_LIB_PATH})
+    endif ()
+    set(MEMCHECK_FLAGS -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer)
+    set(MEMCHECK_LIBS libasan.a rt dl)
+    add_compile_options(${MEMCHECK_FLAGS})
+endif ()
+set(G_BIN_EXT_LIBS ${MEMCHECK_LIBS})
+
+link_directories(${LIBRARY_OUTPUT_PATH} ${SECUREC_LIB_PATH} ${OPENSSL_LIB_PATH} ${CJSON_LIB_PATH} ${DCC_ZEKERNEL_LIB_PATH} ${DCC_DCF_LIB_PATH} ${DCC_CBB_LIB_PATH} ${DCC_LZ4_LIB_PATH} ${DCC_ZLIB_LIB_PATH} ${DCC_ZSTANDARD_LIB_PATH} ${MEMCHECK_LINK_DIRECTORIES})
+
+set(vpp_libsecurec "securec")
+set(3rd_liblz4 "lz4")
+set(3rd_libzstd "zstd")
+set(3rd_libssl "ssl")
+set(3rd_lib_crypto "crypto")
+set(3rd_libjson "cjson")
+set(3rd_libcbb "cbb_static")
+
+add_subdirectory(src)
+OPTION(TEST "option for test module" OFF)
+message(STATUS "TEST = ${TEST}")
+if (TEST)
+    add_subdirectory(test)
+endif()
