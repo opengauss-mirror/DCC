@@ -1,0 +1,28 @@
+if (NOT COMMIT_ID)
+    execute_process(
+            COMMAND bash -c "git rev-parse HEAD"
+            OUTPUT_VARIABLE COMMIT_ID
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    execute_process(
+           COMMAND bash -c "date \"+%Y-%m-%d %H:%M:%S\""
+           OUTPUT_VARIABLE COMPILE_TIME
+           OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+endif ()
+
+
+######################################### version configuration here ################################################
+set(VERSION_DESCRIP "DCC")
+
+if (${CMAKE_BUILD_TYPE} STREQUAL "Debug" OR ${CMAKE_BUILD_TYPE} STREQUAL "")
+    set(DD_DCC_LIB_VERSION "static char* str_DCC_LIB_VERSION=\"${VERSION_DESCRIP} Debug ${COMMIT_ID} compiled at ${COMPILE_TIME}\"")
+else()
+    set(DD_DCC_LIB_VERSION "static char* str_DCC_LIB_VERSION=\"${VERSION_DESCRIP} Release ${COMMIT_ID} compiled at ${COMPILE_TIME}\"")
+endif ()
+set(DD_GETLIBVERSION dcc_get_version)
+configure_file (
+        "${PROJECT_SOURCE_DIR}/build/include/config.h.in"
+        "${PROJECT_SOURCE_DIR}/build/include/config.h"
+)
+########################################## version configuration end ################################################

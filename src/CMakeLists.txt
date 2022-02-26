@@ -1,0 +1,10 @@
+cmake_minimum_required(VERSION 3.14.1)
+MESSAGE(STATUS "DCC CMAKE BUILD BEGIN")
+
+add_subdirectory(client)
+add_subdirectory(tools)
+add_subdirectory(storage)
+add_subdirectory(utils)
+add_subdirectory(server)
+add_subdirectory(network)
+add_subdirectory(executor)

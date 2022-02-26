@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.14.1)
+if (NOT ENABLE_MEMCHECK)
+    add_subdirectory(dcc_ctl)
+    add_subdirectory(dcc_encrypt)
+endif()
