@@ -1,4 +1,4 @@
-# Distributed Consensus Center
+# Distributed Configuration Center
 分布式配置中心，基于DCF实现的一个状态机，用于实现集群中配置信息管理；
 openGauss CM依赖DCC组件对配置数据分布式存取，实现集群配置管理高可用能力；
 
