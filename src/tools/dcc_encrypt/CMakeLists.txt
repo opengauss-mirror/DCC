@@ -16,6 +16,6 @@ aux_source_directory(${DCC_ENCRYPT_PATH} ENCRYPT_SRC)
 # output client bin
 set(ENCRYPT_SRC_LIST  ${ENCRYPT_SRC})
 add_executable(dcc_encrypt ${ENCRYPT_SRC_LIST})
-target_link_libraries(dcc_encrypt pthread dl rt ${3rd_libssl} ${3rd_lib_crypto} -Wl,--whole-archive ${vpp_libsecurec} ${3rd_libcbb} -Wl,--no-whole-archive)
+target_link_libraries(dcc_encrypt pthread dl rt ${3rd_libssl} ${3rd_lib_crypto} ${HIDDEN_LIBS} -Wl,--whole-archive ${vpp_libsecurec} ${3rd_libcbb} -Wl,--no-whole-archive)
 set_target_properties(dcc_encrypt PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${EXECUTABLE_OUTPUT_PATH})
 set_target_properties(dcc_encrypt PROPERTIES LINKER_LANGUAGE "C")

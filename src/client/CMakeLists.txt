@@ -24,4 +24,4 @@ add_compile_definitions(GETLIBVERSION=${DD_GETLIBVERSION})
 # output client so
 set(CLIENT_SRC_LIST ${CLIENT_SRC})
 add_library(dcc_driver SHARED ${CLIENT_SRC_LIST})
-target_link_libraries(dcc_driver utils network pthread dl rt -Wl,--whole-archive ${vpp_libsecurec} ${3rd_libcbb} ${3rd_libssl} -Wl,--no-whole-archive)
+target_link_libraries(dcc_driver utils network pthread dl rt ${HIDDEN_LIBS} -Wl,--whole-archive ${vpp_libsecurec} ${3rd_libcbb} ${3rd_libssl} -Wl,--no-whole-archive)
