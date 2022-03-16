@@ -60,6 +60,15 @@ IF (ENABLE_DCC_LITE)
     message(STATUS "DCC lite enable")
 ENDIF()
 
+message(STATUS "UT = ${UT}")
+if (UT)
+    message("Turn off hidden libs for UT")
+    set(HIDDEN_LIBS "")
+else ()
+    message("Turn on hidden libs")
+    set(HIDDEN_LIBS "-Wl,--exclude-libs,ALL")
+endif()
+
 execute_process(
     COMMAND uname -m
     OUTPUT_VARIABLE OS_ARCH
