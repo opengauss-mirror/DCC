@@ -45,24 +45,24 @@ static int test_main_srv_dcc_start(uint32 nodeid, char *cfg_str)
     if (len < 0) {
         return CM_ERROR;
     }
-    srv_set_param("NODE_ID", nodeidstr);
+    srv_dcc_set_param("NODE_ID", nodeidstr);
 
     len = sprintf_s(data_path, 256, "%s/node%d", test_dcc_main_root_path.c_str(), nodeid);
     if (len < 0) {
         return CM_ERROR;
     }
-    srv_set_param("DATA_PATH", data_path);
+    srv_dcc_set_param("DATA_PATH", data_path);
 
     len = sprintf_s(gstor_dir, 256, "%s/node%d/gstor", test_dcc_main_root_path.c_str(), nodeid);
     if (len < 0) {
         return CM_ERROR;
     }
 
-    if (srv_set_param("ENDPOINT_LIST", cfg_str) != CM_SUCCESS) {
-        printf("srv_set_param ENDPOINT_LIST failed, %s\n", cfg_str);
+    if (srv_dcc_set_param("ENDPOINT_LIST", cfg_str) != CM_SUCCESS) {
+        printf("srv_dcc_set_param ENDPOINT_LIST failed, %s\n", cfg_str);
         return CM_ERROR;
     } else {
-        printf("srv_set_param ENDPOINT_LIST succedd, %s\n", cfg_str);
+        printf("srv_dcc_set_param ENDPOINT_LIST succedd, %s\n", cfg_str);
     }
 
     (void)srv_dcc_register_status_notify(usr_cb_status_changed_notify);
