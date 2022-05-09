@@ -6,6 +6,6 @@
 #
 set -e
 SCRIPTPATH=$(cd "$(dirname "$0")"; pwd)
-cd ${SCRIPTPATH}/build/linux
+cd ${SCRIPTPATH}/build/linux/opengauss
 chmod +x build.sh
 ./build.sh "$@"
