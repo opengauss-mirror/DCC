@@ -1,3 +1,4 @@
+add_subdirectory(test_main)
 OPTION(UT "option for UT" OFF)
 message(STATUS "UT = ${UT}")
 if (UT)
