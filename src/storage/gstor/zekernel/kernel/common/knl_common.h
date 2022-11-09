@@ -146,7 +146,7 @@ typedef struct st_lob_entity {
     do {                                                                                        \
         if (SECUREC_UNLIKELY(!(condition))) {                                                   \
             if (LOG_RUN_ERR_ON) {                                                               \
-                cm_write_normal_log(LOG_RUN, LEVEL_ERROR, (char *)__FILE__, (uint32)__LINE__,   \
+                cm_write_normal_log(LOG_RUN, LEVEL_ERROR, (char *)__FILE_NAME__, (uint32)__LINE__,   \
                                     MODULE_NAME, GS_TRUE, format, ##__VA_ARGS__);               \
                 cm_fync_logfile();                                                              \
             }                                                                                   \

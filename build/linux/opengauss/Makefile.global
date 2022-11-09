@@ -168,6 +168,8 @@ SKIP_RPATH = TRUE
 COMPILE_OPTIONS += $(G_COMPILE_OPTIONS)
 CFLAGS += $(COMPILE_OPTIONS)
 CFLAGS += $(G_LINK_OPTIONS)
+NEW_DEFINED_OPTIONS = -D__FILE_NAME__=\"$(notdir $(subst .o,,$(abspath $@)))\"
+CFLAGS += $(NEW_DEFINED_OPTIONS)
 # for link
 LDFLAGS += $(addprefix -L,$(3RD_LIB_PATH))
 

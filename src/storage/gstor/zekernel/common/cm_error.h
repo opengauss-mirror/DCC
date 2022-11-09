@@ -1142,23 +1142,23 @@ static inline void set_inter_plc_cnt()
 extern const char *g_error_desc[];
 #define GS_THROW_ERROR(err_no, ...)                                                                    \
     do {                                                                                               \
-        cm_set_error((char *)__FILE__, (uint32)__LINE__, err_no, g_error_desc[err_no], ##__VA_ARGS__); \
+        cm_set_error((char *)__FILE_NAME__, (uint32)__LINE__, err_no, g_error_desc[err_no], ##__VA_ARGS__); \
     } while (0)
 
 #define GS_SRC_THROW_ERROR(loc, err_no, ...)                                                           \
     do {                                                                                               \
         if (g_tls_plc_error.plc_flag) {                                                                    \
             cm_set_error_loc(loc);                                                                         \
-            cm_set_error((char *)__FILE__, (uint32)__LINE__, err_no, g_error_desc[err_no], ##__VA_ARGS__); \
+            cm_set_error((char *)__FILE_NAME__, (uint32)__LINE__, err_no, g_error_desc[err_no], ##__VA_ARGS__); \
         } else {                                                                                           \
-            cm_set_error((char *)__FILE__, (uint32)__LINE__, err_no, g_error_desc[err_no], ##__VA_ARGS__); \
+            cm_set_error((char *)__FILE_NAME__, (uint32)__LINE__, err_no, g_error_desc[err_no], ##__VA_ARGS__); \
             cm_set_error_loc(loc);                                                                         \
         }                                                                                                  \
     } while (0)
 
 #define GS_THROW_ERROR_TRY_SRC(loc, err_no, ...)                                                           \
     do {                                                                                                     \
-        cm_set_error((char *)__FILE__, (uint32)__LINE__, err_no, g_error_desc[err_no], ##__VA_ARGS__);       \
+        cm_set_error((char *)__FILE_NAME__, (uint32)__LINE__, err_no, g_error_desc[err_no], ##__VA_ARGS__);       \
         if (loc != NULL) {                                                                                 \
             cm_set_error_loc(*loc);                                                                        \
         }                                                                                                    \
@@ -1167,16 +1167,16 @@ extern const char *g_error_desc[];
 
 #define GS_THROW_ERROR_EX(err_no, format, ...)                                              \
     do {                                                                                    \
-        cm_set_error_ex((char *)__FILE__, (uint32)__LINE__, err_no, format, ##__VA_ARGS__); \
+        cm_set_error_ex((char *)__FILE_NAME__, (uint32)__LINE__, err_no, format, ##__VA_ARGS__); \
     } while (0)
 
 #define GS_SRC_THROW_ERROR_EX(loc, err_no, format, ...)                                     \
     do {                                                                                    \
         if (g_tls_plc_error.plc_flag) {                                                                    \
             cm_set_error_loc(loc);                                                                         \
-            cm_set_error_ex((char *)__FILE__, (uint32)__LINE__, err_no, format, ##__VA_ARGS__);            \
+            cm_set_error_ex((char *)__FILE_NAME__, (uint32)__LINE__, err_no, format, ##__VA_ARGS__);            \
         } else {                                                                                           \
-            cm_set_error_ex((char *)__FILE__, (uint32)__LINE__, err_no, format, ##__VA_ARGS__);            \
+            cm_set_error_ex((char *)__FILE_NAME__, (uint32)__LINE__, err_no, format, ##__VA_ARGS__);            \
             cm_set_error_loc(loc);                                                                         \
         }                                                                                                  \
     } while (0)
@@ -1184,12 +1184,12 @@ extern const char *g_error_desc[];
 /* PL_THROW_ERROR() and PL_SRC_THROW_ERROR() should be used only in pl layer */
 #define PL_THROW_ERROR(err_no, format, ...)                                              \
     do {                                                                                 \
-        cm_set_error((char *)__FILE__, (uint32)__LINE__, err_no, format, ##__VA_ARGS__); \
+        cm_set_error((char *)__FILE_NAME__, (uint32)__LINE__, err_no, format, ##__VA_ARGS__); \
     } while (0)
 
 #define PL_SRC_THROW_ERROR(loc, err_no, format, ...)                                     \
     do {                                                                                 \
-        cm_set_error((char *)__FILE__, (uint32)__LINE__, err_no, format, ##__VA_ARGS__); \
+        cm_set_error((char *)__FILE_NAME__, (uint32)__LINE__, err_no, format, ##__VA_ARGS__); \
         cm_set_error_loc(loc);                                                           \
     } while (0)
 
