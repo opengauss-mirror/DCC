@@ -33,6 +33,7 @@
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <string.h>
 #else
 #include <unistd.h>
 #include <time.h>
@@ -934,6 +935,9 @@ typedef enum en_gs_type {
 #define PRINT_FMT_UINT64 "%llu"
 /* The format effector for GS_TYPE_REAL, %g can removing tailing zeros */
 #define PRINT_FMT_REAL "%." GS_STR(GS_MAX_REAL_PREC) "g"  // * == GS_MAX_REAL_PREC
+#ifdef WIN32
+#define __FILE_NAME__ (strrchr(__FILE__, '\\') ? (strrchr(__FILE__, '\\') + 1) : __FILE__)
+#endif
 
 // end group DATA_TYPE
 #endif
@@ -1056,12 +1060,12 @@ static inline void cm_sleep(uint32 ms)
 #define __STR_LINE__ __AS_STR(__LINE__)
 
 #ifdef WIN32
-#define __TODO__ __pragma(message(__FILE__ "(" __STR_LINE__ "): warning c0000: " __FUNCTION__ " need to be done"))
-#define __CN__   __pragma(message(__FILE__ "(" __STR_LINE__ "): warning c0000: the code only for CN"))
+#define __TODO__ __pragma(message(__FILE_NAME__  "(" __STR_LINE__ "): warning c0000: " __FUNCTION__ " need to be done"))
+#define __CN__   __pragma(message(__FILE_NAME__  "(" __STR_LINE__ "): warning c0000: the code only for CN"))
 #else
 #define DO_PRAGMA(x) _Pragma(#x)
-#define __TODO__     DO_PRAGMA(message(__FILE__ "(" __STR_LINE__ ") need to be done"))
-#define __CN__       DO_PRAGMA(message(__FILE__ "(" __STR_LINE__ ") the code only for CN"))
+#define __TODO__     DO_PRAGMA(message(__FILE_NAME__  "(" __STR_LINE__ ") need to be done"))
+#define __CN__       DO_PRAGMA(message(__FILE_NAME__  "(" __STR_LINE__ ") the code only for CN"))
 #endif
 
 typedef struct st_handle_mutiple_ptrs {

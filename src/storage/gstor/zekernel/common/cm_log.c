@@ -790,16 +790,9 @@ void cm_write_normal_log(log_id_t log_id, log_level_t log_level, const char *cod
     char new_format[GS_MAX_LOG_CONTENT_LENGTH] = {0};
     log_file_handle_t *log_file_handle = &g_logger[log_id];
     text_t buf_text;
-    char *last_file = NULL;
     const char *err_msg = NULL;
     log_param_t *log_param = cm_log_param_instance();
     errno_t errcode;
-
-#ifdef WIN32
-    last_file = strrchr(code_file_name, '\\');
-#else
-    last_file = strrchr(code_file_name, '/');
-#endif
 
     if (log_param->log_instance_startup) {
         errcode = snprintf_s(new_format, GS_MAX_LOG_CONTENT_LENGTH, GS_MAX_LOG_CONTENT_LENGTH - 1, "%s", format);
@@ -810,12 +803,12 @@ void cm_write_normal_log(log_id_t log_id, log_level_t log_level, const char *cod
 
         if (error_code == 0 || need_rec_filelog == GS_FALSE) {
             errcode = snprintf_s(new_format, GS_MAX_LOG_CONTENT_LENGTH, GS_MAX_LOG_CONTENT_LENGTH - 1, "%s [%s:%u]", 
-                                 format, last_file + 1, code_line_num);
+                                 format, code_file_name, code_line_num);
         } else if (error_code == ERR_ASSERT_ERROR) {
             errcode = snprintf_s(new_format, GS_MAX_LOG_CONTENT_LENGTH, GS_MAX_LOG_CONTENT_LENGTH - 1, "%s", format);
         } else {
             errcode = snprintf_s(new_format, GS_MAX_LOG_CONTENT_LENGTH, GS_MAX_LOG_CONTENT_LENGTH - 1,
-                                 "GS-%05d:%s,%s [%s:%u]", error_code, format, err_msg, last_file + 1, code_line_num);
+                                 "GS-%05d:%s,%s [%s:%u]", error_code, format, err_msg, code_file_name, code_line_num);
         }
     }
 
