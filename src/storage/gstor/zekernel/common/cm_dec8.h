@@ -106,7 +106,7 @@ void cm_dec8_print(const dec8_t *dec, const char *file, uint32 line, const char 
 /* open debug mode #define  DEBUG_DEC8 */
 #ifdef DEBUG_DEC8
 #define DEC8_DEBUG_PRINT(dec, fmt, ...) \
-    cm_dec8_print(dec, (char *)__FILE__, (uint32)__LINE__, (char *)__FUNCTION__, fmt, ##__VA_ARGS__)
+    cm_dec8_print(dec, (char *)__FILE_NAME__, (uint32)__LINE__, (char *)__FUNCTION__, fmt, ##__VA_ARGS__)
 #else
 #define DEC8_DEBUG_PRINT(dec, fmt, ...)
 #endif

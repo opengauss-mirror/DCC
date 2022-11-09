@@ -36,7 +36,7 @@
 #define CM_CHECK_PTR(expr)                                                        \
     {                                                                             \
         if ((expr)) {                                                             \
-            printf("warning: null pointer found, %s, %d.\n", __FILE__, __LINE__); \
+            printf("warning: null pointer found, %s, %d.\n", __FILE_NAME__, __LINE__); \
         }                                                                         \
     }
 #define CM_POINTER(p1)                  CM_CHECK_PTR(p1 == NULL)
@@ -77,8 +77,8 @@ static inline void cm_exit(int32 exitcode)
     do {                                                                                                             \
         if (SECUREC_UNLIKELY(!(condition))) {                                                                                          \
             if (LOG_RUN_ERR_ON) {                                                                                    \
-                cm_write_normal_log(LOG_RUN, LEVEL_ERROR, (char *)__FILE__, (uint32)__LINE__, MODULE_NAME, GS_TRUE,  \
-                    format, ##__VA_ARGS__);                                                                          \
+                cm_write_normal_log(LOG_RUN, LEVEL_ERROR, (char *)__FILE_NAME__, (uint32)__LINE__, MODULE_NAME,      \
+                    GS_TRUE, format, ##__VA_ARGS__);                                                                 \
             }                                                                                                        \
             cm_print_call_link(GS_DEFAUT_BLACK_BOX_DEPTH);                                                           \
             cm_fync_logfile();                                                                                       \

@@ -109,7 +109,7 @@ set(3rd_libzstd "zstd")
 set(3rd_libssl "ssl")
 set(3rd_lib_crypto "crypto")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99 -g -ldl -pthread")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99 -g -ldl -pthread -D__FILE_NAME__='\"$(notdir $(subst .o,,$(abspath $@)))\"'")
 add_compile_options(-fno-common)
 add_compile_options(-Wtrampolines)
 add_compile_options(-freg-struct-return)

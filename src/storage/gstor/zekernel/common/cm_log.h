@@ -163,7 +163,7 @@ void cm_log_allinit();
 #define GS_LOG_DEBUG_INF(format, ...)                                                                            \
     do {                                                                                                         \
         if (LOG_DEBUG_INF_ON) {                                                                                  \
-            cm_write_normal_log(LOG_DEBUG, LEVEL_INFO, (char *)__FILE__, (uint32)__LINE__, MODULE_NAME, GS_TRUE, \
+            cm_write_normal_log(LOG_DEBUG, LEVEL_INFO, (char *)__FILE_NAME__, (uint32)__LINE__, MODULE_NAME, GS_TRUE, \
                 format, ##__VA_ARGS__);                                                                          \
         }                                                                                                        \
     } while (0)
@@ -171,14 +171,14 @@ void cm_log_allinit();
 #define GS_LOG_DEBUG_WAR(format, ...)                                                                            \
     do {                                                                                                         \
         if (LOG_DEBUG_WAR_ON) {                                                                                  \
-            cm_write_normal_log(LOG_DEBUG, LEVEL_WARN, (char *)__FILE__, (uint32)__LINE__, MODULE_NAME, GS_TRUE, \
+            cm_write_normal_log(LOG_DEBUG, LEVEL_WARN, (char *)__FILE_NAME__, (uint32)__LINE__, MODULE_NAME, GS_TRUE, \
                 format, ##__VA_ARGS__);                                                                          \
         }                                                                                                        \
     } while (0)
 #define GS_LOG_DEBUG_ERR(format, ...)                                                                             \
     do {                                                                                                          \
         if (LOG_DEBUG_ERR_ON) {                                                                                   \
-            cm_write_normal_log(LOG_DEBUG, LEVEL_ERROR, (char *)__FILE__, (uint32)__LINE__, MODULE_NAME, GS_TRUE, \
+            cm_write_normal_log(LOG_DEBUG, LEVEL_ERROR, (char *)__FILE_NAME__, (uint32)__LINE__, MODULE_NAME, GS_TRUE, \
                 format, ##__VA_ARGS__);                                                                           \
         }                                                                                                         \
     } while (0)
@@ -186,21 +186,21 @@ void cm_log_allinit();
 #define GS_LOG_RUN_INF(format, ...)                                                                             \
     do {                                                                                                        \
         if (LOG_RUN_INF_ON) {                                                                                   \
-            cm_write_normal_log(LOG_RUN, LEVEL_INFO, (char *)__FILE__, (uint32)__LINE__, MODULE_NAME, GS_TRUE,  \
+            cm_write_normal_log(LOG_RUN, LEVEL_INFO, (char *)__FILE_NAME__, (uint32)__LINE__, MODULE_NAME, GS_TRUE,  \
                 format, ##__VA_ARGS__);                                                                         \
         }                                                                                                       \
     } while (0)
 #define GS_LOG_RUN_WAR(format, ...)                                                                             \
     do {                                                                                                        \
         if (LOG_RUN_WAR_ON) {                                                                                   \
-            cm_write_normal_log(LOG_RUN, LEVEL_WARN, (char *)__FILE__, (uint32)__LINE__, MODULE_NAME, GS_TRUE,  \
+            cm_write_normal_log(LOG_RUN, LEVEL_WARN, (char *)__FILE_NAME__, (uint32)__LINE__, MODULE_NAME, GS_TRUE,  \
                 format, ##__VA_ARGS__);                                                                         \
         }                                                                                                       \
     } while (0)
 #define GS_LOG_RUN_ERR(format, ...)                                                                             \
     do {                                                                                                        \
         if (LOG_RUN_ERR_ON) {                                                                                   \
-            cm_write_normal_log(LOG_RUN, LEVEL_ERROR, (char *)__FILE__, (uint32)__LINE__, MODULE_NAME, GS_TRUE, \
+            cm_write_normal_log(LOG_RUN, LEVEL_ERROR, (char *)__FILE_NAME__, (uint32)__LINE__, MODULE_NAME, GS_TRUE, \
                 format, ##__VA_ARGS__);                                                                         \
         }                                                                                                       \
     } while (0)
@@ -238,7 +238,7 @@ void cm_log_allinit();
 #define GS_LOG_RAFT(level, format, ...)                                                                                \
     do {                                                                                                        \
         if (LOG_ON) {                                                                                           \
-            cm_write_normal_log(LOG_RAFT, level, (char *)__FILE__, (uint32)__LINE__, MODULE_NAME, GS_TRUE, \
+            cm_write_normal_log(LOG_RAFT, level, (char *)__FILE_NAME__, (uint32)__LINE__, MODULE_NAME, GS_TRUE, \
                 format, ##__VA_ARGS__);                                                                         \
         }                                                                                                       \
     } while (0)
@@ -252,14 +252,14 @@ void cm_log_allinit();
     } while (0)
 
 #define GS_LOG_TRACE(format, ...)        cm_write_trace_log(format, ##__VA_ARGS__)
-#define GS_LOG_OPTINFO(format, ...) cm_write_normal_log(LOG_OPTINFO, LEVEL_INFO, (char *)__FILE__,    \
+#define GS_LOG_OPTINFO(format, ...) cm_write_normal_log(LOG_OPTINFO, LEVEL_INFO, (char *)__FILE_NAME__,    \
             (uint32)__LINE__, MODULE_NAME, GS_TRUE, format, ##__VA_ARGS__)
 
 /* no need to print error info in file add/remove log  */
 #define GS_LOG_RUN_FILE_INF(need_record_file_log, format, ...)                                           \
     do {                                                                                                 \
         if (LOG_RUN_INF_ON) {                                                                            \
-            cm_write_normal_log(LOG_RUN, LEVEL_INFO, (char *)__FILE__, (uint32)__LINE__, MODULE_NAME,    \
+            cm_write_normal_log(LOG_RUN, LEVEL_INFO, (char *)__FILE_NAME__, (uint32)__LINE__, MODULE_NAME,    \
                 need_record_file_log, format, ##__VA_ARGS__);                                            \
         }                                                                                                \
     } while (0);
@@ -277,7 +277,7 @@ void cm_log_allinit();
 #define GS_LOG_ODBC_INF(format, ...)                                                                               \
     do {                                                                                                           \
         if (LOG_ODBC_INF_ON) {                                                                                      \
-            cm_write_normal_log(LOG_ODBC, LEVEL_INFO, (char *)__FILE__, (uint32)__LINE__, ODBC_MOD_NAME, GS_FALSE, \
+            cm_write_normal_log(LOG_ODBC, LEVEL_INFO, (char *)__FILE_NAME__, (uint32)__LINE__, ODBC_MOD_NAME, GS_FALSE, \
                 format, ##__VA_ARGS__);                                                                            \
         }                                                                                                          \
     } while (0)
@@ -285,7 +285,7 @@ void cm_log_allinit();
 #define GS_LOG_ODBC_WAR(format, ...)                                                                               \
     do {                                                                                                           \
         if (LOG_ODBC_WAR_ON) {                                                                                      \
-            cm_write_normal_log(LOG_ODBC, LEVEL_WARN, (char *)__FILE__, (uint32)__LINE__, ODBC_MOD_NAME, GS_FALSE, \
+            cm_write_normal_log(LOG_ODBC, LEVEL_WARN, (char *)__FILE_NAME__, (uint32)__LINE__, ODBC_MOD_NAME, GS_FALSE, \
                 format, ##__VA_ARGS__);                                                                            \
         }                                                                                                          \
     } while (0)
@@ -293,7 +293,7 @@ void cm_log_allinit();
 #define GS_LOG_ODBC_ERR(format, ...)                                                                                \
     do {                                                                                                            \
         if (LOG_ODBC_ERR_ON) {                                                                                       \
-            cm_write_normal_log(LOG_ODBC, LEVEL_ERROR, (char *)__FILE__, (uint32)__LINE__, ODBC_MOD_NAME, GS_FALSE, \
+            cm_write_normal_log(LOG_ODBC, LEVEL_ERROR, (char *)__FILE_NAME__, (uint32)__LINE__, ODBC_MOD_NAME, GS_FALSE, \
                 format, ##__VA_ARGS__);                                                                             \
         }                                                                                                           \
     } while (0)
