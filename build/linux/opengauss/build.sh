@@ -92,11 +92,7 @@ LOCAL_PATH=${0}
 CUR_PATH=$(pwd)
 
 LOCAL_DIR=$(dirname "${LOCAL_PATH}")
-if [ -z "${PLAT_FORM_STR}" ];then
-    echo "ERROR: env var {PLAT_FORM_STR} not set"
-    exit 1
-fi
-echo "{PLAT_FORM_STR} is: ${PLAT_FORM_STR}"
+
 export PACKAGE=$LOCAL_DIR/../../../
 export OUT_PACKAGE=dcc
 
@@ -115,9 +111,9 @@ mkdir -p $DCC_LIBRARYS/libaio/include
 mkdir -p $DCC_LIBRARYS/dcf
 mkdir -p $DCC_LIBRARYS/cbb
 
-LIB_PATH=${binarylib_dir}/dependency/${PLAT_FORM_STR}
-PLAT_LIB_PATH=${binarylib_dir}/platform/${PLAT_FORM_STR}
-COPT_LIB_PATH=${binarylib_dir}/component/${PLAT_FORM_STR}
+LIB_PATH=${binarylib_dir}/kernel/dependency/
+PLAT_LIB_PATH=${binarylib_dir}/kernel/platform/
+COPT_LIB_PATH=${binarylib_dir}/kernel/component/
 
 cp -r $PLAT_LIB_PATH/Huawei_Secure_C/comm/lib     $DCC_LIBRARYS/huawei_security/lib
 cp -r $LIB_PATH/openssl/comm/lib                  $DCC_LIBRARYS/openssl/lib
@@ -150,12 +146,12 @@ else
     make BUILD_TYPE=${version_mode} -sj 8
 fi
 
-mkdir -p ${binarylib_dir}/component/${PLAT_FORM_STR}/${OUT_PACKAGE}/include
-mkdir -p ${binarylib_dir}/component/${PLAT_FORM_STR}/${OUT_PACKAGE}/lib
-mkdir -p ${binarylib_dir}/component/${PLAT_FORM_STR}/${OUT_PACKAGE}/bin
-cp ./src/client/interface/clt_interface.h   ${binarylib_dir}/component/${PLAT_FORM_STR}/${OUT_PACKAGE}/include
-cp ./src/interface/dcc_interface.h          ${binarylib_dir}/component/${PLAT_FORM_STR}/${OUT_PACKAGE}/include
-cp ./output/bin/*                           ${binarylib_dir}/component/${PLAT_FORM_STR}/${OUT_PACKAGE}/bin
-cp ./output/lib/*.so                        ${binarylib_dir}/component/${PLAT_FORM_STR}/${OUT_PACKAGE}/lib
-cp $COPT_LIB_PATH/dcf/lib/libdcf.so         ${binarylib_dir}/component/${PLAT_FORM_STR}/${OUT_PACKAGE}/lib
+mkdir -p ${binarylib_dir}/kernel/component/${OUT_PACKAGE}/include
+mkdir -p ${binarylib_dir}/kernel/component/${OUT_PACKAGE}/lib
+mkdir -p ${binarylib_dir}/kernel/component/${OUT_PACKAGE}/bin
+cp ./src/client/interface/clt_interface.h   ${binarylib_dir}/kernel/component/${OUT_PACKAGE}/include
+cp ./src/interface/dcc_interface.h          ${binarylib_dir}/kernel/component/${OUT_PACKAGE}/include
+cp ./output/bin/*                           ${binarylib_dir}/kernel/component/${OUT_PACKAGE}/bin
+cp ./output/lib/*.so                        ${binarylib_dir}/kernel/component/${OUT_PACKAGE}/lib
+cp $COPT_LIB_PATH/dcf/lib/libdcf.so         ${binarylib_dir}/kernel/component/${OUT_PACKAGE}/lib
 echo "build DCC SUCCESS"
