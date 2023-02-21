@@ -166,6 +166,7 @@ set(3rd_libssl "ssl")
 set(3rd_lib_crypto "crypto")
 set(3rd_libjson "cjson")
 set(3rd_libcbb "cbb_static")
+set(3rd_libz "z")
 
 add_subdirectory(src)
 OPTION(TEST "option for test module" OFF)
