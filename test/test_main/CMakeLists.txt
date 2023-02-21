@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.14.1)
 message(STATUS "dcc_main current_dir=${CMAKE_CURRENT_SOURCE_DIR}")
+set(CMAKE_C_FLAGS "-g -D_FILE_NAME_='\"$(notdir $(subst .o,,$(abspath $@)))\"'")
+set(CMAKE_CXX_FLAGS "-g -D_FILE_NAME_='\"$(notdir $(subst .o,,$(abspath $@)))\"'")
 
 # include third party
 include_directories(${DCC_SECUREC_INC_PATH})
@@ -27,7 +29,7 @@ link_directories(${DCC_GSTORE_LIB_PATH})
 link_directories(${LIBRARY_OUTPUT_PATH})
 
 add_executable(dcc_main test_main.cpp)
-target_link_libraries(dcc_main pthread dl dcc dcc_driver gstor dcf -Wl,--whole-archive ${3rd_lib_crypto} ${3rd_liblz4} ${3rd_libjson} ${3rd_libzstd} ${vpp_libsecurec} ${3rd_libcbb} ${3rd_libssl} -Wl,--no-whole-archive)
+target_link_libraries(dcc_main pthread dl dcc dcc_driver gstor dcf -Wl,--whole-archive ${3rd_lib_crypto} ${3rd_liblz4} ${3rd_libjson} ${3rd_libzstd} ${vpp_libsecurec} ${3rd_libcbb} ${3rd_libssl} ${3rd_libz} -Wl,--no-whole-archive)
 target_compile_options(dcc_main PRIVATE -std=c++11)
 
 set_target_properties(dcc_main

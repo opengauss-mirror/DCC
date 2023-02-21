@@ -38,7 +38,7 @@ set(DCC_SO_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/srv_cmd_exe.c
 )
 add_library(dcc SHARED ${DCC_SO_SRC})
-target_link_libraries(dcc storage dcf executor utils pthread dl rt ${HIDDEN_LIBS} ${G_BIN_EXT_LIBS} ${3rd_libzstd} ${3rd_libssl} ${3rd_lib_crypto} ${3rd_liblz4} ${3rd_libjson} -Wl,--whole-archive ${vpp_libsecurec} ${3rd_libcbb} -Wl,--no-whole-archive)
+target_link_libraries(dcc storage dcf executor utils pthread dl rt ${HIDDEN_LIBS} ${G_BIN_EXT_LIBS} ${3rd_libzstd} ${3rd_libssl} ${3rd_lib_crypto} ${3rd_liblz4} ${3rd_libjson} -Wl,--whole-archive ${vpp_libsecurec} ${3rd_libcbb} ${3rd_libz} -Wl,--no-whole-archive)
 target_include_directories(dcc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # output server bin
 
@@ -48,7 +48,7 @@ set(DCC_EXE_SRC
 )
 
 add_executable(dcc_server ${DCC_EXE_SRC})
-target_link_libraries(dcc_server storage dcf executor utils pthread dl rt ${HIDDEN_LIBS} ${3rd_libzstd} ${3rd_libssl} ${3rd_lib_crypto} ${3rd_liblz4} ${3rd_libjson} -Wl,--whole-archive ${vpp_libsecurec} ${3rd_libcbb} -Wl,--no-whole-archive)
+target_link_libraries(dcc_server storage dcf executor utils pthread dl rt ${HIDDEN_LIBS} ${3rd_libzstd} ${3rd_libssl} ${3rd_lib_crypto} ${3rd_liblz4} ${3rd_libjson} -Wl,--whole-archive ${vpp_libsecurec} ${3rd_libcbb} ${3rd_libz} -Wl,--no-whole-archive)
 target_include_directories(dcc_server PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(dcc_server PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${EXECUTABLE_OUTPUT_PATH})
 set_target_properties(dcc_server PROPERTIES LINKER_LANGUAGE "C")
