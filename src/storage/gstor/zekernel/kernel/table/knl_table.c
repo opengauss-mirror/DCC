@@ -2284,7 +2284,7 @@ static status_t db_create_index_in_clause(knl_session_t *session, knl_dictionary
 static status_t db_create_cons_index(knl_session_t *session, knl_dictionary_t *dc, knl_constraint_def_t *def,
                                      uint32 *index_id)
 {
-    table_t *table = NULL;
+    table_t *table = DC_TABLE(dc);
     uint32 i;
     knl_index_col_def_t *col_def = NULL;
     uint32 column_count;
@@ -2303,7 +2303,6 @@ static status_t db_create_cons_index(knl_session_t *session, knl_dictionary_t *d
         return GS_ERROR;
     }
 
-    table = DC_TABLE(dc);
     column_count = def->columns.count;
     idx_cols = (uint16 *)cm_push(session->stack, column_count * sizeof(uint16));
 
