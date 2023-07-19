@@ -1275,27 +1275,21 @@ void cm_set_superposed_error(gs_errno_t code, const char *log_msg)
 status_t cm_set_sql_error(const char *file, uint32 line, gs_errno_t code, const char *format, va_list args)
 {
     char log_msg[GS_MAX_LOG_CONTENT_LENGTH] = {0};
-    char *last_file = NULL;
     log_param_t *log_param = cm_log_param_instance();
     errno_t err;
-#ifdef WIN32
-    last_file = strrchr(file, '\\');
-#else
-    last_file = strrchr(file, '/');
-#endif
 
     err = vsnprintf_s(log_msg, GS_MAX_LOG_CONTENT_LENGTH, GS_MAX_LOG_CONTENT_LENGTH - 1, format, args);
     if (SECUREC_UNLIKELY(err == -1)) {
         GS_LOG_RUN_ERR("Secure C lib has thrown an error %d while setting error", err);
     }
     if (!g_tls_error.is_ignore_log) {
-        GS_LOG_DEBUG_ERR("GS-%05d : %s [%s:%u]", code, log_msg, last_file + 1, line);
+        GS_LOG_DEBUG_ERR("GS-%05d : %s [%s:%u]", code, log_msg, file, line);
 
         if (log_param->log_instance_startup || code == ERR_SYSTEM_CALL) {
-            GS_LOG_RUN_ERR("GS-%05d : %s [%s:%u]", code, log_msg, last_file + 1, line);
+            GS_LOG_RUN_ERR("GS-%05d : %s [%s:%u]", code, log_msg, file, line);
         }
     }
-    
+
     if (g_tls_error.code == 0 || g_tls_error.code == ERR_HINT) {
         g_tls_error.code = code;
         g_tls_error.loc.line = 0;
@@ -1405,12 +1399,6 @@ status_t cm_set_plc_error(const char *file, uint32 line, gs_errno_t code,
                           const char *format, va_list args)
 {
     char log_msg[GS_MAX_LOG_CONTENT_LENGTH] = {0};
-    char *last_file = NULL;
-#ifdef WIN32
-    last_file = strrchr(file, '\\');
-#else
-    last_file = strrchr(file, '/');
-#endif
 
     // return value of security fuction snpritf_s/vsnprintf_s which in cm_error.c or cm_log.c can be void
     int32 rc_memzero = vsnprintf_s(log_msg, GS_MAX_LOG_CONTENT_LENGTH, GS_MAX_LOG_CONTENT_LENGTH - 1, format, args);
@@ -1419,8 +1407,8 @@ status_t cm_set_plc_error(const char *file, uint32 line, gs_errno_t code,
             GS_MAX_LOG_CONTENT_LENGTH - 1);
         return GS_ERROR;
     }
-    
-    GS_LOG_DEBUG_ERR("GS-%05d : %s [%s:%u]", code, log_msg, last_file + 1, line);
+
+    GS_LOG_DEBUG_ERR("GS-%05d : %s [%s:%u]", code, log_msg, file, line);
     g_tls_error.code = code;
 
     return cm_set_superposed_plc_error(code, log_msg);
