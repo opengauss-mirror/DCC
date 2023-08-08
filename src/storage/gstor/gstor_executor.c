@@ -455,7 +455,7 @@ static status_t gstor_init_default_params(void)
     attr->db_isolevel = (uint8)ISOLATION_READ_COMMITTED;
     attr->ckpt_timeout = DEFAULT_CKPT_TIMEOUT;
     attr->enable_OSYNC = GS_TRUE;
-    attr->enable_logdirectIO = GS_TRUE;
+    attr->enable_logdirectIO = GS_FALSE;
     attr->undo_auto_shrink = GS_TRUE;
     attr->repl_wait_timeout = DEFAULT_REPL_WAIT_TIMEOUT;
     attr->restore_check_version = GS_TRUE;
