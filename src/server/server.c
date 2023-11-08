@@ -139,7 +139,7 @@ static status_t srv_lock_dcc_server(void)
         return CM_ERROR;
     }
 
-    return cm_lock_fd(g_lock_fd);
+    return cm_lock_fd(g_lock_fd, CM_SLEEP_TIME);
 }
 
 static void clear_resource(void)
