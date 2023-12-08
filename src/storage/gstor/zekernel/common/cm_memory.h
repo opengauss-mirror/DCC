@@ -67,9 +67,9 @@ extern "C" {
                              : "memory"); \
     }
 #elif defined(__loongarch__)
-#define CM_MFENCE
+#define CM_MFENCE                         \
     {                                     \
-        __asm__ volatile("" ::      \
+        __asm__ volatile("" ::            \
                              : "memory"); \
     }
 #endif
