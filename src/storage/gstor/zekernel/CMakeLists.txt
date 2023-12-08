@@ -50,7 +50,7 @@ if (UNIX)
         endif (USE_H1620)
 
         add_compile_options(-mtune=cortex-a72 -fsigned-char -g -ggdb3 -march=armv8-a+crc -funwind-tables)
-    else ()
+    elseif (OS_ARCH STREQUAL "x86_64")
         message(STATUS "x86_64 CPU")
         add_compile_options(-mtune=nocona -fsigned-char -msse4.2 )
     endif ()

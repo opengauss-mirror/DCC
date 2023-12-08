@@ -69,7 +69,7 @@ typedef struct st_recursive_lock {
     uint16 r_cnt;
 } recursive_lock_t;
 
-#if defined(__arm__) || defined(__aarch64__)
+#if defined(__arm__) || defined(__aarch64__) || defined(__loongarch__)
 #define fas_cpu_pause()          \
     {                            \
         __asm__ volatile("nop"); \
