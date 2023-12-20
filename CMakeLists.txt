@@ -85,7 +85,7 @@ if (OS_ARCH STREQUAL "aarch64")
     endif (USE_H1620)
 
     add_compile_options(-mtune=cortex-a72 -fsigned-char -g -ggdb3 -march=armv8-a+crc -funwind-tables)
-else ()
+elseif (OS_ARCH STREQUAL "x86_64")
     add_compile_options(-msse4.2 )
 endif ()
 Add_Definitions(-DWSEC_COMPILE_CAC_OPENSSL -DWSEC_AES_GCM_SUPPORT -DWSEC_USE_OPENSSL_110 -DWSEC_COMPILE_SDP)
