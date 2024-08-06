@@ -88,20 +88,6 @@ static inline uint64 cm_clock_now_ms()
 #endif
 }
 
-static inline status_t cm_text2uint64(const text_t *text_src, uint64 *value)
-{
-    char buf[CM_MAX_NUMBER_LEN + 1] = { 0 };  // '00000000000000000000001'
-    text_t text = *text_src;
-    cm_trim_text(&text);
-    if (text.len > CM_MAX_NUMBER_LEN) {
-        CM_THROW_ERROR_EX(ERR_VALUE_ERROR, "Convert uint64 failed, the length of text can't be larger than %u",
-            CM_MAX_NUMBER_LEN);
-        return CM_ERROR;
-    }
-    CM_RETURN_IFERR(cm_text2str(&text, buf, CM_MAX_NUMBER_LEN + 1));
-    return cm_str2uint64(buf, value);
-}
-
 #ifdef __cplusplus
 }
 #endif
