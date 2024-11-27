@@ -22,6 +22,9 @@ openGauss CM依赖DCC组件对配置数据分布式存取，实现集群配置�
 支持以下操作系统：
 -   CentOS 7.6（x86）
 -   openEuler-20.03-LTS
+-   openEuler-22.03-LTS
+-   openEuler-24.03-LTS
+
 适配其他系统，可参照openGauss数据库编译指导
 当前DCC依赖第三方软件有securec、zlib、lz4、zstd、openssl、cjson;
 编译DCC依赖的第三方软件要求与编译opengauss对依赖的第三方软件要求一致。
