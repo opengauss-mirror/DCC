@@ -42,6 +42,10 @@ extern "C" {
 #define EXC_DCC_LEASE_KV_TABLE      ((char *)"SYS_LEASE_KV")
 #define EXC_DCC_RESERVED_KV_TABLE   ((char *)"SYS_DCC_KV")
 
+#define DCC_STREAM_ID               1
+#define EXC_INVALID_NODE_ID         0
+#define EXC_3X_FIXED                3
+
 typedef struct st_exc_util_handle {
     void *handle;
     uint32 opened_tabled_id;
@@ -62,6 +66,16 @@ void exc_wr_handle_begin(void);
 void exc_wr_handle_commit(void);
 
 void exc_wr_handle_write_commit(uint32 table_id, text_t *key, text_t *val);
+
+int exc_backup(const char *bak_format);
+
+int exc_restore(const char *restore_path, const char *old_path, const char *new_path);
+
+status_t exc_path_join(char *buf, uint32 buf_size, const char *path, const char *filename);
+
+status_t exc_remove_dir(const char *path);
+
+uint32 exc_get_leader_id(void);
 
 #ifdef __cplusplus
 }

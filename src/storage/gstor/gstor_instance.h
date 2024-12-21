@@ -34,6 +34,10 @@
     extern "C" {
 #endif
 
+typedef enum en_startup_mode {
+    STARTUP_MODE_OPEN = 0,
+    STARTUP_MODE_NOMOUNT = 1,
+} startup_mode_t;
 
 typedef enum en_shutdown_mode {
     SHUTDOWN_MODE_NORMAL = 0,
