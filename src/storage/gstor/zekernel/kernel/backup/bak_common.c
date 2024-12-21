@@ -1969,6 +1969,10 @@ status_t bak_set_exclude_space(knl_session_t *session, bak_t *bak, galist_t *exc
     uint32 spc_id;
     errno_t ret;
 
+    if (exclude_spcs == NULL) {
+        return GS_SUCCESS;
+    }
+
     ret = memset_sp(bak->exclude_spcs, sizeof(bool32) * GS_MAX_SPACES, 0, sizeof(bool32) * GS_MAX_SPACES);
     knl_securec_check(ret);
 
@@ -1998,6 +2002,10 @@ status_t bak_set_include_space(knl_session_t *session, bak_t *bak, galist_t *inc
     ret = memset_sp(bak->include_spcs, sizeof(bool32) * GS_MAX_SPACES, 0, sizeof(bool32) * GS_MAX_SPACES);
     knl_securec_check(ret);
 
+    if (include_spcs == NULL) {
+        return GS_SUCCESS;
+    }
+    
     for (uint32 i = 0; i < include_spcs->count; i++) {
         spc_name = (text_t *)cm_galist_get(include_spcs, i);
         if (spc_get_space_id(session, spc_name, &spc_id) != GS_SUCCESS) {

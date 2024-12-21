@@ -337,6 +337,12 @@ EXPORT_API int srv_dcc_set_election_priority(unsigned long long priority);
  */
 EXPORT_API int srv_dcc_promote_leader(unsigned int node_id, unsigned int wait_timeout_ms);
 
+EXPORT_API int srv_dcc_backup(const char *bak_format);
+
+EXPORT_API int srv_dcc_restore(const char *restore_path);
+
+EXPORT_API int srv_dcc_set_dcf_param(const char *param_name, const char *param_value);
+
 #ifdef __cplusplus
 }
 #endif
