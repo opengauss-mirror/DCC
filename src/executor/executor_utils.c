@@ -26,6 +26,7 @@
 #include "storage.h"
 #include "util_error.h"
 #include "util_defs.h"
+#include "dcf_interface.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -143,6 +144,105 @@ void exc_wr_handle_write_commit(uint32 table_id, text_t *key, text_t *val)
     exc_wr_handle_begin();
     exc_wr_handle_put(table_id, key, val);
     exc_wr_handle_commit();
+}
+
+int exc_backup(const char *bak_format)
+{
+    return (int)db_bakup(EXC_WR_HANDLE, bak_format);
+}
+
+int exc_restore(const char *restore_path, const char *old_path, const char *new_path)
+{
+    if (db_startup(STARTUP_MODE_NOMOUNT) != CM_SUCCESS) {
+        LOG_DEBUG_ERR("[EXC] db_startup with nomount mode failed");
+        return CM_ERROR;
+    }
+
+    void *handle = NULL;
+    int ret = db_alloc(&handle);
+    if (ret != CM_SUCCESS) {
+        LOG_DEBUG_ERR("[EXC] db_alloc handle for restore failed");
+        return CM_ERROR;
+    }
+
+    ret = db_restore(handle, restore_path, old_path, new_path);
+    if (ret != CM_SUCCESS) {
+        db_free(handle);
+        db_shutdown();
+        LOG_DEBUG_ERR("[EXC] db_restore failed");
+        return CM_ERROR;
+    }
+
+    db_shutdown();
+    return CM_SUCCESS;
+}
+
+status_t exc_path_join(char *buf, uint32 buf_size, const char *path, const char *filename)
+{
+    MEMS_RETURN_IFERR(strcpy_sp(buf, buf_size, path));
+    MEMS_RETURN_IFERR(strcat_sp(buf, CM_FILE_NAME_BUFFER_SIZE, "/"));
+    MEMS_RETURN_IFERR(strcat_sp(buf, CM_FILE_NAME_BUFFER_SIZE, filename));
+
+    return CM_SUCCESS;
+}
+
+status_t exc_remove_dir(const char *path)
+{
+    LOG_RUN_INF("[EXC] remove directory %s...", path);
+#ifndef WIN32
+    struct dirent *dirp = NULL;
+    char filepath[CM_FILE_NAME_BUFFER_SIZE] = {0};
+
+    DIR *dir = opendir(path);
+    if (dir == NULL) {
+        return CM_ERROR;
+    }
+
+    while ((dirp = readdir(dir)) != NULL) {
+        if ((strcmp(dirp->d_name, ".") == 0) || (strcmp(dirp->d_name, "..") == 0)) {
+            continue;
+        }
+
+        if (exc_path_join(filepath, CM_FILE_NAME_BUFFER_SIZE, path, dirp->d_name) != CM_SUCCESS) {
+            LOG_RUN_ERR("[EXC]splic dir/file %s to path %s failed", dirp->d_name, path);
+            (void)closedir(dir);
+            return CM_ERROR;
+        }
+
+        if (cm_dir_exist(filepath)) {
+            if (exc_remove_dir(filepath) == CM_SUCCESS) {
+                continue;
+            }
+            (void)closedir(dir);
+            return CM_ERROR;
+        }
+
+        if (cm_remove_file(filepath) != CM_SUCCESS) {
+            (void)closedir(dir);
+            return CM_ERROR;
+        }
+    }
+    (void)closedir(dir);
+    return cm_remove_file(path);
+#else
+    LOG_RUN_ERR("[EXC]win32 not support rm dir now.");
+    return CM_ERROR;
+#endif
+}
+
+uint32 exc_get_leader_id(void)
+{
+    uint32 node_id = EXC_INVALID_NODE_ID;
+    char ip[CM_MAX_IP_LEN];
+    uint32 port;
+    int ret = dcf_query_leader_info(DCC_STREAM_ID, ip, CM_MAX_IP_LEN, &port, &node_id);
+    if (ret != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] get_leader_id: error_no:%d, error_msg:%s",
+            dcf_get_errorno(),
+            dcf_get_error(dcf_get_errorno()));
+        return EXC_INVALID_NODE_ID;
+    }
+    return node_id;
 }
 
 #ifdef __cplusplus

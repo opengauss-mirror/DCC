@@ -36,7 +36,7 @@ extern "C" {
 
 EXPORT_API void gstor_shutdown(void);
 
-EXPORT_API int gstor_startup(char *data_path);
+EXPORT_API int gstor_startup(char *data_path, unsigned int startup_mode);
 
 EXPORT_API int gstor_alloc(void **handle);
 
@@ -70,6 +70,10 @@ EXPORT_API int gstor_begin(void *handle);
 EXPORT_API int gstor_commit(void *handle);
 
 EXPORT_API int gstor_rollback(void *handle);
+
+EXPORT_API int gstor_backup(void *handle, const char *bak_format);
+
+EXPORT_API int gstor_restore(void *handle, const char *restore_path, const char *old_path, const char *new_path);
 
 EXPORT_API int gstor_vm_alloc(void *handle, unsigned int *vmid);
 EXPORT_API int gstor_vm_open(void *handle, unsigned int vmid, void **page);
