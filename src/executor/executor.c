@@ -46,6 +46,11 @@ static exc_cb_consensus_proc_t  g_cb_consensus_proc_notify = NULL;
 static dcc_cb_status_notify_t g_cb_status_notify = NULL;
 static mem_pool_t *g_exc_mem_pool = NULL;
 
+// build info
+static exc_build_info_t g_build_info = {0};
+
+static volatile bool32 g_truncate_stopped = CM_FALSE;
+
 #define DCC_SEQUENCE_START          "0000000000"
 
 static void exc_dealing_put(msg_entry_t* entry);
@@ -107,13 +112,13 @@ static status_t exc_set_dcf_param(param_value_t* dcf_config)
     }
     int len = sprintf_s(dcf_data_path, EXC_PATH_MAX_SIZE, "%s/dcf_data", (char *)data_path.str_val);
     if (len < 0 || len > EXC_PATH_MAX_SIZE) {
-        LOG_RUN_ERR("[EXC] Setting data path crosses the max size.");
+        LOG_RUN_ERR("[EXC] Setting dcf data path fail, len=%d.", len);
         return CM_ERROR;
     }
 
     int ret = dcf_set_param("DATA_PATH", dcf_data_path);
     if (ret != CM_SUCCESS) {
-        LOG_RUN_ERR("[EXC] Setting data path is failed.");
+        LOG_RUN_ERR("[EXC] Setting dcf data path is failed.");
         return CM_ERROR;
     }
 
@@ -143,6 +148,12 @@ static status_t exc_set_dcf_applied_index(void)
     }
 
     if (!eof) {
+        if (stg_value.len >= CM_MAX_NUM_PART_BUFF) {
+            LOG_RUN_ERR("[EXC] exc get dcf applied index value string len is too large, len=%u.", stg_value.len);
+            return CM_ERROR;
+        }
+        char tmp_str[CM_MAX_NUM_PART_BUFF] = {0};
+        MEMS_RETURN_IFERR(memcpy_s(tmp_str, CM_MAX_NUM_PART_BUFF, stg_value.str, stg_value.len));
         CM_RETURN_IFERR(cm_str2uint64(stg_value.str, &applied_index));
         if (dcf_set_applied_index(EXC_STREAM_ID_DEFAULT, applied_index) != CM_SUCCESS) {
             CM_THROW_ERROR(ERR_EXC_INIT_FAILED, "it sets local applied index");
@@ -384,7 +395,7 @@ static bool32 exc_need_truncate(uint64 min_applied_idx, uint64 *first_index_kept
         if (total_disk_size != 0 && ((double)avail_disk_size) / total_disk_size <= EXC_DISK_AVAIL_RATE) {
             *first_index_kept = g_set_stg_applied_idx;
             g_min_applied_idx_frozen_cnt = 0;
-            LOG_DEBUG_WAR("[EXC] exc need truncate, set first_index_kept as stg_applied_idx:%llu",
+            LOG_RUN_WAR("[EXC] exc need truncate, set first_index_kept as stg_applied_idx:%llu",
                 g_set_stg_applied_idx);
             return CM_TRUE;
         }
@@ -400,6 +411,10 @@ static status_t exc_dcf_truncate(void)
     uint64 first_index_kept = 0;
     if (dcf_get_cluster_min_applied_idx(EXC_STREAM_ID_DEFAULT, (unsigned long long*)&min_applied_idx) != CM_SUCCESS) {
         return CM_ERROR;
+    }
+    if (g_truncate_stopped) {
+        LOG_DEBUG_INF("[EXC] truncate is stopped now, maybe in building.");
+        return CM_SUCCESS;
     }
     if (exc_need_truncate(min_applied_idx, &first_index_kept) && first_index_kept <= g_set_stg_applied_idx) {
         int ret = dcf_truncate(EXC_STREAM_ID_DEFAULT, first_index_kept);
@@ -487,7 +502,8 @@ int exc_cb_consensus_follow_notify(unsigned int stream_id, unsigned long long in
     uint32 total_size = size + CM_SEQUENCE_OFFSET;
     msg_entry_t *entry = exc_add_entry(buf, total_size, index, key);
     if (entry == NULL) {
-        LOG_RUN_ERR("[EXC] Add entry failed when it executes consensus-notify function.");
+        LOG_RUN_ERR("[EXC] Add entry failed when it executes consensus-notify function, total_size = %u, index=%llu",
+            total_size, index);
         return CM_ERROR;
     }
 
@@ -534,6 +550,854 @@ int exc_cb_status_notify(unsigned int stream_id, dcf_role_t new_role)
     return CM_SUCCESS;
 }
 
+status_t exc_join_datadir_and_subdir(const char *subdir, char *joined_dir)
+{
+    param_value_t data_path;
+    char real_data_path[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    CM_RETURN_IFERR(srv_get_param(DCC_PARAM_DATA_PATH, &data_path));
+    if (CM_IS_EMPTY_STR(data_path.str_val)) {
+        LOG_RUN_ERR("[EXC]data_path is empty.");
+        return CM_ERROR;
+    }
+    CM_RETURN_IFERR(realpath_file(data_path.str_val, real_data_path, CM_FILE_NAME_BUFFER_SIZE));
+
+    PRTS_RETURN_IFERR(snprintf_s(joined_dir, CM_FILE_NAME_BUFFER_SIZE, CM_FILE_NAME_BUFFER_SIZE - 1, "%s/%s",
+        real_data_path, subdir));
+
+    return CM_SUCCESS;
+}
+
+static status_t exc_follower_set_build_status_to_file(uint32 status)
+{
+    char file_name[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    if (exc_join_datadir_and_subdir(DCC_BUILD_STATUS_FILE, file_name) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] set_build_status: join datapath and file=%s failed.", DCC_BUILD_STATUS_FILE);
+        return CM_ERROR;
+    }
+
+    char buf[CM_BUFLEN_32] = {0};
+    PRTS_RETURN_IFERR(snprintf_s(buf, CM_BUFLEN_32, CM_BUFLEN_32 - 1, "%u", status));
+
+    int fd;
+    status_t ret = cm_create_file(file_name, O_RDWR | O_BINARY | O_APPEND | O_SYNC, &fd);
+    if (ret != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] create build status file failed.");
+        return CM_ERROR;
+    }
+
+    ret = cm_write_file(fd, (const void *)buf, (int32)sizeof(status));
+    if (ret != CM_SUCCESS) {
+        cm_close_file(fd);
+        LOG_RUN_ERR("[EXC] write build status file failed.");
+        return CM_ERROR;
+    }
+
+    cm_close_file(fd);
+    LOG_RUN_INF("[EXC] write build status=%u to file=%s success.", status, file_name);
+    return CM_SUCCESS;
+}
+
+status_t exc_follower_remove_build_status_file(void)
+{
+    char file_name[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    if (exc_join_datadir_and_subdir(DCC_BUILD_STATUS_FILE, file_name) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] remove_build_status_file: join datapath and file=%s failed.", DCC_BUILD_STATUS_FILE);
+        return CM_ERROR;
+    }
+
+    status_t ret = CM_SUCCESS;
+    if (cm_file_exist(file_name)) {
+        ret = cm_remove_file(file_name);
+    }
+    LOG_RUN_INF("[EXC] remove build status file=%s end, ret=%d.", file_name, ret);
+    return ret;
+}
+
+void exc_remove_subdir_of_datadir(const char *subdir)
+{
+    LOG_RUN_INF("[EXC]remove subdir=%s start...", subdir);
+    char rm_path[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    if (exc_join_datadir_and_subdir(subdir, rm_path) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC]remove: join datapath and subdir=%s failed.", subdir);
+        return;
+    }
+
+    if (cm_dir_exist(rm_path)) {
+        (void)exc_remove_dir(rm_path);
+    }
+    LOG_RUN_INF("[EXC]remove subdir=%s end.", subdir);
+}
+
+status_t exc_send_build_cmd(exc_build_cmd_t cmd, uint32 dest_node, uint32 serial_number)
+{
+    if (dest_node == EXC_INVALID_NODE_ID) {
+        LOG_RUN_ERR("[EXC] send_build_cmd, dest_node is invalid, cmd:%d", cmd);
+        return CM_ERROR;
+    }
+    LOG_RUN_INF("[EXC] send_build_cmd, cmd=%d, dest_node=%u", cmd, dest_node);
+    bool32 diff_endian = (bool32)dcf_is_diff_endian(DCC_STREAM_ID, dest_node);
+    exc_build_msg_head_t head;
+    head.version = (uint32)(diff_endian ? cs_reverse_uint32(EXC_BUILD_CUR_VERSION) : EXC_BUILD_CUR_VERSION);
+    head.cmd = diff_endian ? (exc_build_cmd_t)cs_reverse_uint32((uint32)cmd) : cmd;
+    head.serial_number = diff_endian ? cs_reverse_uint32(serial_number) : serial_number;
+    return (status_t)dcf_send_msg(DCC_STREAM_ID, dest_node, (const char *)&head, sizeof(exc_build_msg_head_t));
+}
+
+status_t exc_send_big_build_cmd_by_body(exc_build_cmd_t cmd, uint32 dest_node, uint32 serial_number, const char *str)
+{
+    if (dest_node == EXC_INVALID_NODE_ID) {
+        LOG_RUN_ERR("[EXC] exc_send_big_build_cmd_by_body, dest_node is invalid, cmd:%d", cmd);
+        return CM_ERROR;
+    }
+    LOG_RUN_INF("[EXC] exc_send_big_build_cmd_by_body, cmd=%d, dest_node=%u", cmd, dest_node);
+    bool32 diff_endian = (bool32)dcf_is_diff_endian(DCC_STREAM_ID, dest_node);
+    exc_build_msg_t msg;
+    msg.head.version = (uint32)(diff_endian ? cs_reverse_uint32(EXC_BUILD_CUR_VERSION) : EXC_BUILD_CUR_VERSION);
+    msg.head.cmd = diff_endian ? (exc_build_cmd_t)cs_reverse_uint32((uint32)cmd) : cmd;
+    msg.head.serial_number =  diff_endian ? cs_reverse_uint32(serial_number) : serial_number;
+    uint32 size = strlen(str);
+    msg.head.cur_size = diff_endian ? cs_reverse_uint32(size) : size;
+    if (snprintf_s(msg.body, BUILD_PKT_MAX_BODY_SIZE,
+        BUILD_PKT_MAX_BODY_SIZE - 1, "%s", str) == -1) {
+        LOG_RUN_ERR("[EXC] save big_build_cmd str=%s failed.", str);
+        return CM_ERROR;
+    }
+    return (status_t)dcf_send_msg(DCC_STREAM_ID, dest_node, (const char *)&msg, sizeof(exc_build_msg_t));
+}
+
+void exc_init_build_msg(exc_build_msg_t *msg, int32 file_size, bool32 diff_endian)
+{
+    msg->head.version = (uint32)(diff_endian ? cs_reverse_uint32(EXC_BUILD_CUR_VERSION) : EXC_BUILD_CUR_VERSION);
+    msg->head.cmd = (exc_build_cmd_t)(diff_endian ? cs_reverse_uint32((uint32)BUILD_PKT_SEND) : BUILD_PKT_SEND);
+    msg->head.filesize = (uint32)(diff_endian ? cs_reverse_int32(file_size) : file_size);
+}
+
+status_t exc_send_one_build_file(const char *path, const char *file_name)
+{
+    if (g_build_info.build_status == BUILD_CANCEL) {
+        LOG_RUN_ERR("[EXC] build cancel, no need to send build file");
+        return CM_ERROR;
+    }
+    if (CM_STR_EQUAL(file_name, ".") || CM_STR_EQUAL(file_name, "..")) {
+        LOG_RUN_INF("[EXC] path=%s file=%s, no need send.", path, file_name);
+        return CM_SUCCESS;
+    }
+    
+    char full_file_name[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    PRTS_RETURN_IFERR(snprintf_s(full_file_name, CM_FILE_NAME_BUFFER_SIZE, CM_FILE_NAME_BUFFER_SIZE - 1, "%s/%s",
+        path, file_name));
+    int32 fd = -1;
+    CM_RETURN_IFERR(cm_open_file(full_file_name, O_RDONLY | O_BINARY, &fd));
+    int32 file_size = (int32)cm_file_size(fd);
+    if (file_size < 0) {
+        cm_close_file(fd);
+        LOG_RUN_ERR("[EXC] backup file=%s size=%d error.", file_name, file_size);
+        return CM_ERROR;
+    }
+
+    uint32 dest_node = g_build_info.follower_id;
+    bool32 diff_endian = (bool32)dcf_is_diff_endian(DCC_STREAM_ID, dest_node);
+    exc_build_msg_t msg;
+    exc_init_build_msg(&msg, file_size, diff_endian);
+    PRTS_RETURN_IFERR(snprintf_s(msg.head.filename, CM_MAX_NAME_LEN, CM_MAX_NAME_LEN - 1, "%s", file_name));
+    uint32 offset = 0;
+    int32 read_size;
+    uint32 remain_size = (uint32)file_size;
+    while (remain_size > 0) {
+        uint32 cur_size = (remain_size >= BUILD_PKT_MAX_BODY_SIZE) ? BUILD_PKT_MAX_BODY_SIZE : remain_size;
+        if (cm_pread_file(fd, msg.body, cur_size, offset, &read_size) != CM_SUCCESS ||
+            (uint32)read_size != cur_size) {
+            cm_close_file(fd);
+            LOG_RUN_ERR("[EXC] read file=%s size=%d failed, offset=%u.", file_name, file_size, offset);
+            return CM_ERROR;
+        }
+        msg.head.cur_size = diff_endian ? cs_reverse_uint32(cur_size) : cur_size;
+        msg.head.cur_offset = diff_endian ? cs_reverse_uint32(offset) : offset;
+        if (g_build_info.send_serial_number > g_build_info.recv_serial_number + BUILD_PKT_CREDIT_NUM) {
+            (void)cm_event_timedwait(&g_build_info.send_event, CM_SLEEP_50_FIXED);
+        }
+        uint32 serial_number = g_build_info.send_serial_number++;
+        msg.head.serial_number = diff_endian ? cs_reverse_uint32(serial_number) : serial_number;
+        if (dcf_send_msg(DCC_STREAM_ID, dest_node, (const char *)&msg, sizeof(exc_build_msg_t)) != CM_SUCCESS) {
+            cm_close_file(fd);
+            LOG_RUN_ERR("[EXC] send file=%s size=%dfailed, offset=%u.", file_name, file_size, offset);
+            return CM_ERROR;
+        }
+
+        offset += cur_size;
+        remain_size -= cur_size;
+    }
+
+    cm_close_file(fd);
+    LOG_RUN_INF("[EXC] send build path=%s file=%s size=%d success.", path, file_name, file_size);
+    return CM_SUCCESS;
+}
+
+status_t exc_make_subdir_of_datadir(const char *subdir)
+{
+    char make_path[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    if (exc_join_datadir_and_subdir(subdir, make_path) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] make: join datapath and subdir=%s failed.", DCC_BACKUP_DIR);
+        return CM_ERROR;
+    }
+    if (cm_create_dir(make_path) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] create_dir=%s failed.", make_path);
+        return CM_ERROR;
+    }
+    LOG_RUN_INF("[EXC] create_dir=%s success.", make_path);
+    return CM_SUCCESS;
+}
+
+status_t exc_follower_build_start_proc(void)
+{
+    exc_remove_subdir_of_datadir(DCC_BACKUP_DIR);
+    if (exc_make_subdir_of_datadir(DCC_BACKUP_DIR) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] exc_make_subdir_of_datadir failed.");
+        return CM_ERROR;
+    }
+    if (exc_send_build_cmd(BUILD_START_REQ, g_build_info.leader_id, 0) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] send_build_cmd BUILD_START_REQ failed.");
+        return CM_ERROR;
+    }
+    g_build_info.build_status = FOLLOWER_BUILD_PKT_RECV;
+    g_build_info.last_update_time = cm_clock_now_ms();
+
+    LOG_RUN_INF("[EXC] follower_build_start_proc ok.");
+    return CM_SUCCESS;
+}
+
+status_t exc_follower_build_pkt_recv_end_proc(void)
+{
+    LOG_RUN_INF("[EXC] shutdown db start...");
+    db_shutdown();
+    LOG_RUN_INF("[EXC] shutdown db success.");
+    exc_remove_subdir_of_datadir(DCC_GSTOR_DIR);
+    exc_remove_subdir_of_datadir(DCC_DCFDATA_DIR);
+    char bak_path[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    if (exc_join_datadir_and_subdir(DCC_BACKUP_DIR, bak_path) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] restore: join datapath and subdir=%s failed.", DCC_BACKUP_DIR);
+        return CM_ERROR;
+    }
+
+    char new_path[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    if (exc_join_datadir_and_subdir(DCC_DATA_DIR, new_path) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] new_path: join datapath and subdir=%s failed.", DCC_DATA_DIR);
+        return CM_ERROR;
+    }
+    LOG_RUN_INF("[EXC] restore start...");
+    const char *old_path = (const char *)g_build_info.old_restore_path;
+    if (exc_restore(bak_path, old_path, (const char *)new_path) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] restore failed, bak_path=%s, old_path=%s, new_path=%s.", bak_path, old_path, new_path);
+        return CM_ERROR;
+    }
+    LOG_RUN_INF("[EXC] restore success, bak_path=%s, old_path=%s, new_path=%s.", bak_path, old_path, new_path);
+    if (exc_send_build_cmd(BUILD_OK_REQ, g_build_info.leader_id, 0) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] send_build_cmd BUILD_OK_REQ failed.");
+        return CM_ERROR;
+    }
+    if (g_build_info.build_status == BUILD_CANCEL) {
+        LOG_RUN_ERR("[EXC] build_cancel, pkt_recv_proc failed.");
+        return CM_ERROR;
+    }
+    LOG_RUN_INF("[EXC] exc_follower_build_pkt_recv_end_proc ok.");
+    return CM_SUCCESS;
+}
+
+void exc_follower_build_start(thread_t *thread)
+{
+    (void)exc_follower_set_build_status_to_file(FOLLOWER_BUILD_START);
+    if (exc_follower_build_start_proc() != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] follower_build_start_proc failed.");
+        thread->closed = 1;
+    } else {
+        (void)exc_follower_set_build_status_to_file(FOLLOWER_BUILD_PKT_RECV);
+    }
+}
+
+void exc_follower_build_pkt_recv(thread_t *thread)
+{
+    LOG_DEBUG_INF("[EXC] follower build status= %d", FOLLOWER_BUILD_PKT_RECV);
+    if ((cm_clock_now_ms() - g_build_info.last_update_time) / MILLISECS_PER_SECOND >
+        FOLLOWER_BUILD_PKT_RECV_TIMEOUT) {
+        LOG_RUN_ERR("[EXC] wait build pkt from leader timeout.");
+        thread->closed = 1;
+    }
+}
+
+void exc_follower_build_pkt_recv_end(thread_t *thread)
+{
+    (void)exc_follower_set_build_status_to_file(FOLLOWER_BUILD_PKT_RECV_END);
+    if (exc_follower_build_pkt_recv_end_proc() != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] follower_build_pkt_recv_end_proc failed, send cancel leader build msg.");
+        (void)exc_send_build_cmd(BUILD_CANCEL_REQ, g_build_info.leader_id, 0);
+        thread->closed = 1;
+    } else {
+        g_build_info.build_status = FOLLOWER_BUILD_OK_REQ_SEND;
+        g_build_info.last_update_time = cm_clock_now_ms();
+        (void)exc_follower_set_build_status_to_file(FOLLOWER_BUILD_OK_REQ_SEND);
+    }
+}
+
+void exc_follower_build_ok_req_send(thread_t *thread)
+{
+    if ((cm_clock_now_ms() - g_build_info.last_update_time) / MILLISECS_PER_SECOND >
+        FOLLOWER_BUILD_OK_REQ_SEND_TIMEOUT) {
+        LOG_RUN_WAR("[EXC] wait build ok ack timeout, directly exit and try restart");
+        (void)dcf_stop();
+        (void)exc_follower_remove_build_status_file();
+        exit(0);
+    }
+}
+
+void exc_follower_build_ok_ack_recv(thread_t *thread)
+{
+    (void)exc_follower_set_build_status_to_file(FOLLOWER_BUILD_OK_ACK_RECV);
+    LOG_RUN_INF("[EXC] build ok ack received, exit and restart.");
+    (void)dcf_stop();
+    (void)exc_follower_remove_build_status_file();
+    exit(0);
+}
+
+void exc_follower_build_proc(thread_t *thread)
+{
+    cm_set_thread_name("exc_follower_build");
+    LOG_RUN_INF("[EXC] follower_build thread started, tid:%lu, close:%u", thread->id, thread->closed);
+
+    while (!thread->closed) {
+        if (g_build_info.build_status == FOLLOWER_BUILD_START) {
+            exc_follower_build_start(thread);
+        }
+
+        if (g_build_info.build_status == FOLLOWER_BUILD_PKT_RECV) {
+            exc_follower_build_pkt_recv(thread);
+        }
+
+        if (g_build_info.build_status == FOLLOWER_BUILD_PKT_RECV_END) {
+            exc_follower_build_pkt_recv_end(thread);
+        }
+
+        if (g_build_info.build_status == FOLLOWER_BUILD_OK_REQ_SEND) {
+            exc_follower_build_ok_req_send(thread);
+        }
+
+        if (g_build_info.build_status == FOLLOWER_BUILD_OK_ACK_RECV) {
+            exc_follower_build_ok_ack_recv(thread);
+        }
+
+        uint32 now_leader = exc_get_leader_id();
+        if (g_build_info.leader_id != now_leader) {
+            LOG_RUN_INF("[EXC] leader=%u changed to %u now, give up building.", g_build_info.leader_id, now_leader);
+            break;
+        }
+
+        if (g_build_info.build_status == BUILD_CANCEL) {
+            LOG_RUN_INF("[EXC] follower build status changed to cancel, give up building.");
+            cm_sleep(EXC_3X_FIXED * MILLISECS_PER_SECOND);
+            break;
+        }
+
+        cm_sleep(CM_SLEEP_1_FIXED);
+    }
+
+    g_build_info.build_status = BUILD_NONE;
+    (void)exc_follower_remove_build_status_file();
+    dcf_set_exception(DCC_STREAM_ID, DCF_EXCEPTION_MISSING_LOG);    // rebuild if build fail.
+    LOG_RUN_INF("[EXC] follower_build thread closed, tid:%lu, close:%u", thread->id, thread->closed);
+}
+
+void exc_clear_build_file_info(void)
+{
+    for (uint32 i = 0; i < BUILD_FILE_MAX_NUM; i++) {
+        g_build_info.build_file[i].filename[0] = '\0';
+        g_build_info.build_file[i].fd = -1;
+        g_build_info.build_file[i].is_write_end = CM_FALSE;
+    }
+}
+
+int exc_cb_exception_notify(unsigned int strean_id, dcf_exception_t exception)
+{
+    LOG_RUN_INF("[EXC] dcf exception %d report, build_status=%d.", exception, g_build_info.build_status);
+    if (exception == DCF_EXCEPTION_MISSING_LOG && g_build_info.build_status == BUILD_NONE) {
+        cm_close_thread(&g_build_info.thread);
+        exc_clear_build_file_info();
+        g_build_info.build_status = FOLLOWER_BUILD_START;
+        g_build_info.leader_id = exc_get_leader_id();
+        CM_MFENCE;
+        LOG_RUN_INF("[EXC] dcf log loss and full build is required!");
+        CM_RETURN_IFERR(cm_create_thread(exc_follower_build_proc, 0, NULL, &g_build_info.thread));
+    } else {
+        dcf_set_exception(DCC_STREAM_ID, DCF_RUNNING_NORMAL);
+        LOG_RUN_INF("[EXC] dcf exception has been used, clear it.");
+    }
+    return CM_SUCCESS;
+}
+
+status_t exc_send_backup_file(const char *path)
+{
+#ifdef WIN32
+    intptr_t handle;
+    struct _finddata_t file_data;
+    char file_name[CM_MAX_PATH_LEN] = {0};
+    char *prefix = (char *)"*";
+
+    PRTS_RETURN_IFERR(snprintf_s(file_name, CM_MAX_PATH_LEN, CM_MAX_PATH_LEN - 1, "%s/%s", path, prefix));
+
+    handle = (intptr_t)_findfirst(file_name, &file_data);
+    if (-1L == handle) {
+        return CM_ERROR;
+    }
+    if (exc_send_one_build_file(path, (char *)file_data.name) != CM_SUCCESS) {
+        _findclose(handle);
+        return CM_ERROR;
+    }
+    while (_findnext(handle, &file_data) == 0) {
+        if (exc_send_one_build_file(path, (char *)file_data.name) != CM_SUCCESS) {
+            _findclose(handle);
+            return CM_ERROR;
+        }
+    }
+    _findclose(handle);
+#else
+    DIR *dir_ptr = NULL;
+    struct dirent *dirent_ptr = NULL;
+
+    dir_ptr = opendir(path);
+    if (dir_ptr == NULL) {
+        return CM_ERROR;
+    }
+
+    dirent_ptr = readdir(dir_ptr);
+    while (dirent_ptr != NULL) {
+        if (exc_send_one_build_file(path, (char *)dirent_ptr->d_name) != CM_SUCCESS) {
+            (void)closedir(dir_ptr);
+            return CM_ERROR;
+        }
+        dirent_ptr = readdir(dir_ptr);
+    }
+    (void)closedir(dir_ptr);
+#endif
+    return CM_SUCCESS;
+}
+ 
+status_t exc_leader_build_pkt_send_proc(void)
+{
+    g_truncate_stopped = CM_TRUE;
+    if (dcf_pause_rep(DCC_STREAM_ID, g_build_info.follower_id, DCF_MAX_PAUSE_TIME) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] pause rep to follower_id=%u failed.", g_build_info.follower_id);
+        return CM_ERROR;
+    }
+    exc_remove_subdir_of_datadir(DCC_BACKUP_DIR);
+    CM_MFENCE;
+
+    char bak_path[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    if (exc_join_datadir_and_subdir(DCC_BACKUP_DIR, bak_path) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] send: join datapath and subdir=%s failed.", DCC_BACKUP_DIR);
+        return CM_ERROR;
+    }
+    LOG_RUN_INF("[EXC] backup start...");
+    if (exc_backup(bak_path)) {
+        LOG_RUN_ERR("[EXC] backup failed, bak_path=%s.", bak_path);
+        return CM_ERROR;
+    }
+    LOG_RUN_INF("[EXC] backup success, bak_path=%s.", bak_path);
+
+    CM_RETURN_IFERR(exc_send_backup_file(bak_path));
+
+    char old_path[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    if (exc_join_datadir_and_subdir(DCC_DATA_DIR, old_path) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] old_path: join datapath and subdir=%s failed.", DCC_DATA_DIR);
+        return CM_ERROR;
+    }
+    CM_RETURN_IFERR(exc_send_big_build_cmd_by_body(BUILD_PKT_SEND_END, g_build_info.follower_id, 0, old_path));
+    if (g_build_info.build_status == BUILD_CANCEL) {
+        LOG_RUN_ERR("[EXC] build_cancel, send_proc failed");
+        return CM_ERROR;
+    }
+    LOG_RUN_INF("[EXC] leader_build_pkt_send_proc ok.");
+    return CM_SUCCESS;
+}
+
+void exc_leader_build_proc(thread_t *thread)
+{
+    cm_set_thread_name("exc_leader_build");
+    LOG_RUN_INF("[EXC]leader_build thread started, tid:%lu, close:%u", thread->id, thread->closed);
+    if (cm_event_init(&g_build_info.send_event) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] leader_build send_event init failed.");
+    }
+
+    while (!thread->closed) {
+        if (g_build_info.build_status == LEADER_BUILD_PKT_SEND) {
+            if (exc_leader_build_pkt_send_proc() != CM_SUCCESS) {
+                LOG_RUN_ERR("[EXC] leader_build_pkt_send_proc failed, retry.");
+                break;
+            }
+            g_build_info.build_status = LEADER_BUILD_PKT_SEND_END;
+            g_build_info.last_update_time = cm_clock_now_ms();
+        }
+
+        if (g_build_info.build_status == LEADER_BUILD_PKT_SEND_END) {
+            if ((cm_clock_now_ms() - g_build_info.last_update_time) / MILLISECS_PER_SECOND >
+                LEADER_WAIT_FOLLOWER_RESTORE_TIMEOUT) {
+                LOG_RUN_ERR("[EXC] wait follower restore timeout.");
+                break;
+            }
+        }
+
+        if (g_build_info.build_status == LEADER_BUILD_OK_REQ_RECV) {
+            if (exc_send_build_cmd(BUILD_OK_ACK, g_build_info.follower_id, 0) != CM_SUCCESS) {
+                LOG_RUN_ERR("[EXC] send_build_cmd BUILD_OK_ACK failed");
+            }
+            LOG_RUN_INF("[EXC] send BUILD_OK_ACK cmd to follower=%u success and build end.", g_build_info.follower_id);
+            break;
+        }
+
+        if (!exc_is_leader()) {
+            LOG_RUN_INF("[EXC] I am not leader now, give up building.");
+            break;
+        }
+
+        if (g_build_info.build_status == BUILD_CANCEL) {
+            LOG_RUN_INF("[EXC] leader build status changed to cancel, give up building.");
+            break;
+        }
+
+        cm_sleep(CM_SLEEP_1_FIXED);
+    }
+
+    cm_event_destory(&g_build_info.send_event);
+    
+    if (dcf_pause_rep(DCC_STREAM_ID, g_build_info.follower_id, DCF_MIN_PAUSE_TIME) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] cancel pause rep to node=%u failed.", g_build_info.follower_id);
+    }
+    g_build_info.build_status = BUILD_NONE;
+    g_truncate_stopped = CM_FALSE;
+    LOG_RUN_INF("[EXC] leader_build follower=%u end, thread closed, tid:%lu, close:%u",
+        g_build_info.follower_id, thread->id, thread->closed);
+}
+
+bool32 exc_is_build_file_exist(const char *file_name)
+{
+    for (uint32 i = 0; i < BUILD_FILE_MAX_NUM; i++) {
+        if (strcmp((const char *)g_build_info.build_file[i].filename, file_name) == 0) {
+            return CM_TRUE;
+        }
+    }
+    return CM_FALSE;
+}
+
+status_t exc_create_build_file(exc_build_msg_t *buf, int32 *fd, uint32 *pos)
+{
+    uint32 i;
+    for (i = 0; i < BUILD_FILE_MAX_NUM; i++) {
+        if (g_build_info.build_file[i].filename[0] == '\0') {
+            break;
+        }
+    }
+    if (i >= BUILD_FILE_MAX_NUM) {
+        LOG_RUN_ERR("[EXC] create_build_file=%s failed, no pos now.", buf->head.filename);
+        return CM_ERROR;
+    }
+
+    char bak_path[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    if (exc_join_datadir_and_subdir(DCC_BACKUP_DIR, bak_path) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] create: join datapath and subdir= %s failed.", DCC_BACKUP_DIR);
+        return CM_ERROR;
+    }
+
+    char full_file_name[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    PRTS_RETURN_IFERR(snprintf_s(full_file_name, CM_FILE_NAME_BUFFER_SIZE, CM_FILE_NAME_BUFFER_SIZE - 1, "%s/%s",
+        bak_path, buf->head.filename));
+    
+    PRTS_RETURN_IFERR(snprintf_s((char *)g_build_info.build_file[i].filename, CM_MAX_NAME_LEN, CM_MAX_NAME_LEN - 1,
+        "%s", buf->head.filename));
+    g_build_info.build_file[i].is_write_end = CM_FALSE;
+    if (cm_open_file(full_file_name, O_CREAT | O_TRUNC | O_RDWR | O_BINARY, fd) != CM_SUCCESS || *fd < 0) {
+        LOG_RUN_ERR("[EXC] create build file=%s failed, fd=%d.", full_file_name, *fd);
+        g_build_info.build_file[i].filename[0] = '\0';
+        return CM_ERROR;
+    }
+    g_build_info.build_file[i].fd = *fd;
+    *pos = i;
+    LOG_RUN_INF("[EXC] create_build_file=%s success, fd=%d, i=%u.", buf->head.filename, *fd, i);
+    return CM_SUCCESS;
+}
+
+status_t exc_find_build_file_fd(exc_build_msg_t *buf, int32 *fd, uint32 *pos)
+{
+    uint32 i;
+    for (i = 0; i < BUILD_FILE_MAX_NUM; i++) {
+        if (strcmp((const char *)g_build_info.build_file[i].filename, buf->head.filename) == 0) {
+            break;
+        }
+    }
+    if (i >= BUILD_FILE_MAX_NUM) {
+        LOG_RUN_ERR("[EXC] find_build_file=%s failed, offset=%u.", buf->head.filename, buf->head.cur_offset);
+        return CM_ERROR;
+    }
+    if (g_build_info.build_file[i].fd < 0) {
+        LOG_RUN_ERR("[EXC] [EXC] find_build_file=%s fd=%d error.", buf->head.filename, g_build_info.build_file[i].fd);
+        return CM_ERROR;
+    }
+
+    *fd = g_build_info.build_file[i].fd;
+    *pos = i;
+    return CM_SUCCESS;
+}
+
+status_t exc_write_build_file(exc_build_msg_t *buf)
+{
+    int32 fd = -1;
+    uint32 pos = 0;
+    if (buf->head.cur_offset == 0) {
+        if (exc_is_build_file_exist(buf->head.filename)) {
+            LOG_RUN_WAR("[EXC] build file=%s is already exist, ignore this pkt.", buf->head.filename);
+            return CM_ERROR;
+        } else {
+            CM_RETURN_IFERR(exc_create_build_file(buf, &fd, &pos));
+        }
+    } else {
+        CM_RETURN_IFERR(exc_find_build_file_fd(buf, &fd, &pos));
+    }
+
+    uint32 file_size = (uint32)cm_file_size(fd);
+    if (buf->head.cur_offset != file_size) {
+        LOG_RUN_ERR("[EXC] build_file=%s offset=%u or size=%u error.",
+            buf->head.filename, buf->head.cur_offset, file_size);
+        return CM_ERROR;
+    }
+    if (cm_pwrite_file(fd, buf->body, buf->head.cur_size, buf->head.cur_offset) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] build_file=%s offset=%u write error.",
+            buf->head.filename, buf->head.cur_offset);
+        return CM_ERROR;
+    }
+
+    if (buf->head.cur_offset + buf->head.cur_size == buf->head.filesize) {
+        g_build_info.build_file[pos].is_write_end = CM_TRUE;
+        g_build_info.last_update_time = cm_clock_now_ms();
+        LOG_RUN_INF("[EXC] build file=%s size=%u write end success.", buf->head.filename, buf->head.filesize);
+        if (exc_send_build_cmd(BUILD_PKT_ACK, g_build_info.leader_id, buf->head.serial_number) != CM_SUCCESS) {
+            LOG_RUN_ERR("[EXC] end: send_build_cmd BUILD_PKT_ACK failed, serial_number=%u.", buf->head.serial_number);
+        }
+        return CM_SUCCESS;
+    }
+
+    if (buf->head.serial_number % BUILD_PKTS_PER_ACK == 0) {
+        if (exc_send_build_cmd(BUILD_PKT_ACK, g_build_info.leader_id, buf->head.serial_number) != CM_SUCCESS) {
+            LOG_RUN_ERR("[EXC] send_build_cmd BUILD_PKT_ACK failed, serial_number=%u.", buf->head.serial_number);
+        }
+    }
+
+    return CM_SUCCESS;
+}
+
+bool32 exc_check_all_build_file_write_ok(void)
+{
+    LOG_RUN_INF("[EXC] check_all_build_file_write start...");
+    uint32 file_num = 0;
+    for (uint32 i = 0; i < BUILD_FILE_MAX_NUM; i++) {
+        if (g_build_info.build_file[i].filename[0] == '\0') {
+            continue;
+        }
+        if (!g_build_info.build_file[i].is_write_end) {
+            LOG_RUN_ERR("[EXC] check_all_build_file_write failed, file_name=%s.", g_build_info.build_file[i].filename);
+            return CM_FALSE;
+        }
+        int32 fd = g_build_info.build_file[i].fd;
+        status_t status = cm_fdatasync_file(fd);
+        cm_close_file(fd);
+        if (status != CM_SUCCESS) {
+            LOG_RUN_ERR("[EXC] build_file=%s fd=%d fdatasync failed.", g_build_info.build_file[i].filename, fd);
+            return CM_FALSE;
+        }
+        file_num++;
+        g_build_info.last_update_time = cm_clock_now_ms();
+        LOG_RUN_INF("[EXC] sync and close build file = %s fd=%u success.", g_build_info.build_file[i].filename, fd);
+    }
+    LOG_RUN_INF("[EXC] check_all_build_file_write success, file_num=%u.", file_num);
+    return CM_TRUE;
+}
+
+bool32 exc_is_build_msg_valid(exc_build_cmd_t cmd)
+{
+    switch (cmd) {
+        case BUILD_START_REQ:
+            if (g_build_info.build_status != BUILD_NONE) {
+                LOG_RUN_ERR("[EXC] maybe follower=%u building now, wait...", g_build_info.follower_id);
+                return CM_FALSE;
+            }
+            break;
+        case BUILD_PKT_SEND:
+        case BUILD_PKT_SEND_END:
+            if (g_build_info.build_status != FOLLOWER_BUILD_PKT_RECV &&
+                g_build_info.build_status != FOLLOWER_BUILD_START) {
+                return CM_FALSE;
+            }
+            break;
+        case BUILD_PKT_ACK:
+            if (g_build_info.build_status != LEADER_BUILD_PKT_SEND &&
+                g_build_info.build_status != LEADER_BUILD_PKT_SEND_END) {
+                return CM_FALSE;
+            }
+            break;
+        case BUILD_OK_REQ:
+            if (g_build_info.build_status != LEADER_BUILD_PKT_SEND_END) {
+                return CM_FALSE;
+            }
+            break;
+        case BUILD_OK_ACK:
+            if (g_build_info.build_status != FOLLOWER_BUILD_OK_REQ_SEND) {
+                return CM_FALSE;
+            }
+            break;
+        case BUILD_CANCEL_REQ:
+            break;
+        default:
+            LOG_RUN_ERR("[EXC] recv msg_cmd=%u is not support now.", cmd);
+            return CM_FALSE;
+        }
+
+    return CM_TRUE;
+}
+
+static bool32 exc_is_need_build_cancel(unsigned int src_node)
+{
+    if (g_build_info.build_status != BUILD_NONE) {
+        if (exc_is_leader()) {
+            if (g_build_info.follower_id == src_node) {
+                LOG_RUN_WAR("[EXC] i am leader, msg invalid, src_node = %u, build_id = %u, build_status = %u", src_node,
+                            g_build_info.follower_id, g_build_info.build_status);
+                return CM_TRUE;
+            }
+        } else {
+            LOG_RUN_WAR("[EXC] i am not leader, msg invalid and build cancel, src_node = %u", src_node);
+            return CM_TRUE;
+        }
+    }
+    return CM_FALSE;
+}
+
+status_t exc_build_start_req(uint32 src_node)
+{
+    cm_close_thread(&g_build_info.thread);
+    g_build_info.build_status = LEADER_BUILD_PKT_SEND;
+    g_build_info.follower_id = src_node;
+    CM_MFENCE;
+    return cm_create_thread(exc_leader_build_proc, 0, NULL, &g_build_info.thread);
+}
+
+int exc_cb_process_msg(unsigned int stream_id, unsigned int src_node, const char *msg, unsigned int msg_size)
+{
+    exc_build_msg_t *buf = (exc_build_msg_t *)msg;
+    LOG_RUN_INF("[EXC] recv process msg, src=%u, msg_cmd=%u, msg_size=%u, serial_number=%u, build_status=%d.",
+        src_node, buf->head.cmd, msg_size, buf->head.serial_number, g_build_info.build_status);
+
+    if (exc_is_build_msg_valid(buf->head.cmd) != CM_TRUE) {
+        LOG_RUN_ERR("[EXC] cmd=%u does not match with build status=%d", buf->head.cmd, g_build_info.build_status);
+        (void)exc_send_build_cmd(BUILD_CANCEL_REQ, src_node, 0);
+        if (exc_is_need_build_cancel(src_node) == CM_TRUE) {
+            g_build_info.build_status = BUILD_CANCEL;
+        }
+        return CM_ERROR;
+    }
+
+    switch (buf->head.cmd) {
+        case BUILD_START_REQ:
+            CM_RETURN_IFERR(exc_build_start_req(src_node));
+            break;
+        case BUILD_PKT_SEND:
+            LOG_RUN_INF("[EXC] recv BUILD_PKT_SEND, filename=%s, offset=%u, size=%u, filesize=%u.",
+                buf->head.filename, buf->head.cur_offset, buf->head.cur_size, buf->head.filesize);
+            CM_RETURN_IFERR(exc_write_build_file(buf));
+            break;
+        case BUILD_PKT_ACK:
+            g_build_info.recv_serial_number = buf->head.serial_number;
+            if (g_build_info.send_serial_number <= g_build_info.recv_serial_number + BUILD_PKT_CREDIT_NUM) {
+                cm_event_notify(&g_build_info.send_event);
+            }
+            break;
+        case BUILD_PKT_SEND_END:
+            CM_RETURN_IF_FALSE(exc_check_all_build_file_write_ok());
+            if (snprintf_s((char *)g_build_info.old_restore_path, CM_FILE_NAME_BUFFER_SIZE,
+                CM_FILE_NAME_BUFFER_SIZE - 1, "%s", buf->body) == -1) {
+                LOG_RUN_ERR("[EXC] save old_restore_path failed, body=%s.", buf->body);
+                return CM_ERROR;
+            }
+            CM_MFENCE;
+            g_build_info.build_status = FOLLOWER_BUILD_PKT_RECV_END;
+            break;
+        case BUILD_OK_REQ:
+            g_build_info.build_status = LEADER_BUILD_OK_REQ_RECV;
+            break;
+        case BUILD_OK_ACK:
+            g_build_info.build_status = FOLLOWER_BUILD_OK_ACK_RECV;
+            break;
+        case BUILD_CANCEL_REQ:
+            if (g_build_info.build_status != BUILD_NONE) {
+                g_build_info.build_status = BUILD_CANCEL;
+            }
+            break;
+        default:
+            return CM_ERROR;
+    }
+
+    return CM_SUCCESS;
+}
+
+void exc_rename_subdir_of_datadir(const char *src_dir, const char *dst_dir)
+{
+    LOG_RUN_INF("[EXC] rename src_dir=%s to dst_dir=%s start...", src_dir, dst_dir);
+    char old_dir[CM_MAX_PATH_LEN] = {0};
+    char new_dir[CM_MAX_PATH_LEN] = {0};
+    if (exc_join_datadir_and_subdir(src_dir, old_dir) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] rename: join datapath and src_dir=%s failed.", src_dir);
+        return;
+    }
+    if (exc_join_datadir_and_subdir(dst_dir, new_dir) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] rename:join datapath and dst_dir=%s failed.", dst_dir);
+        return;
+    }
+
+    if (cm_dir_exist(new_dir)) {
+        (void)exc_remove_dir(new_dir);
+    }
+
+    if (cm_rename_file(old_dir, new_dir) != CM_SUCCESS) {
+        LOG_RUN_INF("[EXC] rename src_dir=%s to dst_dir=%s failed.", src_dir, dst_dir);
+        return;
+    }
+    LOG_RUN_INF("[EXC] rename src_dir=%s to dst_dir=%s end.", src_dir, dst_dir);
+}
+
+void exc_try_self_recovery(void)
+{
+    char build_file[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    if (exc_join_datadir_and_subdir(DCC_BUILD_STATUS_FILE, build_file) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] try_self_recovery: join datapath and file=%s failed.", DCC_BUILD_STATUS_FILE);
+        return;
+    }
+
+    if (cm_file_exist(build_file)) {
+        exc_rename_subdir_of_datadir(DCC_GSTOR_DIR, DCC_GSTOR_DIR_BK);
+        exc_rename_subdir_of_datadir(DCC_DCFDATA_DIR, DCC_DCFDATA_DIR_BK);
+        (void)cm_remove_file(build_file);
+        LOG_RUN_INF("[EXC] build status file exist, try_self_recovery.");
+        return;
+    }
+
+    char first_init[CM_MAX_PATH_LEN] = {0};
+    if (exc_join_datadir_and_subdir(DCC_FIRST_INIT_DIR, first_init) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] try_self_recovery: join datapath and first_init failed.");
+        return;
+    }
+
+    if (cm_dir_exist(first_init)) {
+        exc_rename_subdir_of_datadir(DCC_GSTOR_DIR, DCC_GSTOR_DIR_BK);
+        exc_rename_subdir_of_datadir(DCC_DCFDATA_DIR, DCC_DCFDATA_DIR_BK);
+        LOG_RUN_INF("[EXC] first_init dir exist, try_self_recovery.");
+        return;
+    }
+}
+
 static int exc_register_logger_cb_func(void)
 {
     int ret;
@@ -563,6 +1427,16 @@ static status_t exc_dcf_start(void)
 
     // register status cb
     if (dcf_register_status_notify(exc_cb_status_notify) != CM_SUCCESS) {
+        return CM_ERROR;
+    }
+
+    if (dcf_register_exception_report(exc_cb_exception_notify) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] Register exception_notify callback function failed.");
+        return CM_ERROR;
+    }
+
+    if (dcf_register_msg_proc(exc_cb_process_msg) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] Register msg_proc callback function failed.");
         return CM_ERROR;
     }
 
@@ -1179,6 +2053,80 @@ bool32 exc_is_idle(void)
         return CM_TRUE;
     }
     return CM_FALSE;
+}
+
+status_t exc_check_first_init(void)
+{
+    char dcc_db[CM_MAX_PATH_LEN] = {0};
+    if (exc_join_datadir_and_subdir(DCC_GSTOR_DIR, dcc_db) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] exc_check_first_init: join datapath and gstor failed.");
+        return CM_ERROR;
+    }
+
+    if (cm_dir_exist(dcc_db)) {
+        LOG_RUN_INF("[EXC] dcc_db dir=%s is exist, not first init.", dcc_db);
+        return CM_SUCCESS;
+    }
+
+    char first_init[CM_MAX_PATH_LEN] = {0};
+    if (exc_join_datadir_and_subdir(DCC_FIRST_INIT_DIR, first_init) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] exc_check_first_init: join datapath and first_init failed.");
+        return CM_ERROR;
+    }
+
+    if (!cm_dir_exist(first_init)) {
+        if (cm_create_dir(first_init) != CM_SUCCESS) {
+            LOG_RUN_ERR("[EXC] exc_check_first_init: create_dir=%s failed.", first_init);
+            return CM_ERROR;
+        }
+    }
+
+    LOG_RUN_INF("[EXC] this is first init, and create dir=%s success.", DCC_FIRST_INIT_DIR);
+    return CM_SUCCESS;
+}
+
+status_t exc_init_done_tryclean(void)
+{
+    char gstor_bk[CM_MAX_PATH_LEN] = {0};
+    if (exc_join_datadir_and_subdir(DCC_GSTOR_DIR_BK, gstor_bk) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] exc_init_done: join datapath and gstor_bk failed.");
+        return CM_ERROR;
+    }
+
+    if (cm_dir_exist(gstor_bk)) {
+        if (exc_remove_dir(gstor_bk) != CM_SUCCESS) {
+            LOG_RUN_ERR("[EXC] exc_init_done: remove gstor_bk failed.");
+            return CM_ERROR;
+        }
+    }
+
+    char dcf_data_bk[CM_MAX_PATH_LEN] = {0};
+    if (exc_join_datadir_and_subdir(DCC_DCFDATA_DIR_BK, dcf_data_bk) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] exc_init_done: join datapath and dcf_data_bk failed.");
+        return CM_ERROR;
+    }
+
+    if (cm_dir_exist(dcf_data_bk)) {
+        if (exc_remove_dir(dcf_data_bk) != CM_SUCCESS) {
+            LOG_RUN_ERR("[EXC] exc_init_done: remove dcf_data_bk failed.");
+            return CM_ERROR;
+        }
+    }
+
+    char first_init[CM_MAX_PATH_LEN] = {0};
+        if (exc_join_datadir_and_subdir(DCC_FIRST_INIT_DIR, first_init) != CM_SUCCESS) {
+        LOG_RUN_ERR("[EXC] exc_init_done: join datapath and first_init failed.");
+        return CM_ERROR;
+    }
+
+    if (cm_dir_exist(first_init)) {
+        if (exc_remove_dir(first_init) != CM_SUCCESS) {
+            LOG_RUN_ERR("[EXC] exc_init_done: remove first_init failed.");
+            return CM_ERROR;
+        }
+    }
+
+    return CM_SUCCESS;
 }
 
 #ifdef __cplusplus

@@ -49,7 +49,6 @@ static latch_t g_dcc_latch = {0};
 
 #define SRV_WAIT_COMMIT_TIMEOUT_DEFAULT (5000) // ms
 #define SRV_WAIT_COMMIT_EVENT_TIMEOUT (50) // ms
-#define DCC_STREAM_ID               (1)
 #define DCC_SPLIT_STRING            " "
 #define DCC_ENCLOSE_CHAR            0
 #define DCC_CMD_PARAMETER_CNT       16
@@ -238,10 +237,13 @@ static status_t srv_instance_init()
         LOG_RUN_ERR("[API] init profile stat failed");
         return CM_ERROR;
     }
-
+    exc_try_self_recovery();
+    LOG_RUN_INF("[API] dcc check if need try_self_recovery end.");
+    CM_RETURN_IFERR(exc_check_first_init());
     // stg start
-    if (db_startup() != CM_SUCCESS) {
+    if (db_startup(STARTUP_MODE_OPEN) != CM_SUCCESS) {
         LOG_RUN_ERR("[API] db_startup failed");
+        exc_try_self_recovery();
         return CM_ERROR;
     }
     LOG_RUN_INF("[API] dcc db_startup succeed.");
@@ -250,8 +252,10 @@ static status_t srv_instance_init()
     if (exc_init() != CM_SUCCESS) {
         db_shutdown();
         LOG_RUN_ERR("[API] executor module init failed");
+        exc_try_self_recovery();
         return CM_ERROR;
     }
+    CM_RETURN_IFERR(exc_init_done_tryclean());
     LOG_RUN_INF("[API] dcc init executor succeed.");
 
     if (srv_new_instance() != CM_SUCCESS) {
@@ -756,15 +760,8 @@ int srv_dcc_query_leader_info(unsigned int *node_id)
     cm_reset_error();
     CHECK_SRV_STATUS(DCC_SRV_RUNNING);
     CM_CHECK_NULL_PTR(node_id);
-
-    char ip[CM_MAX_IP_LEN];
-    uint32 port;
-    int ret = dcf_query_leader_info(DCC_STREAM_ID, ip, CM_MAX_IP_LEN, &port, node_id);
-    if (ret != CM_SUCCESS) {
-        CM_THROW_ERROR(ERR_DCF_INTERNAL, "");
-        LOG_RUN_ERR("[API] dcf_query_leader_info: error_no:%d, error_msg:%s",
-            dcf_get_errorno(),
-            dcf_get_error(dcf_get_errorno()));
+    *node_id = exc_get_leader_id();
+    if (*node_id == EXC_INVALID_NODE_ID) {
         return CM_ERROR;
     }
     return CM_SUCCESS;
@@ -849,6 +846,42 @@ int srv_dcc_promote_leader(unsigned int node_id, unsigned int wait_timeout_ms)
         return CM_ERROR;
     }
     return CM_SUCCESS;
+}
+
+int srv_dcc_backup(const char *bak_format)
+{
+    cm_reset_error();
+    CHECK_SRV_STATUS(DCC_SRV_RUNNING);
+    LOG_OPER("[API] dcc backup");
+    int ret = exc_backup(bak_format);
+    if (ret != CM_SUCCESS) {
+        LOG_DEBUG_ERR("[API] dcc backup failed: error_no:%d, error_msg:%s",
+            dcf_get_errorno(), dcf_get_error(dcf_get_errorno()));
+        return CM_ERROR;
+    }
+    return CM_SUCCESS;
+}
+
+int srv_dcc_restore(const char *restore_path)
+{
+    cm_reset_error();
+    LOG_OPER("[API] dcc restore");
+    int ret = exc_restore(restore_path, NULL, NULL);
+    if (ret != CM_SUCCESS) {
+        LOG_DEBUG_ERR("[API] dcc restore failed: error_no:%d, error_msg:%s",
+            dcf_get_errorno(), dcf_get_error(dcf_get_errorno()));
+        return CM_ERROR;
+    }
+    return CM_SUCCESS;
+}
+
+int srv_dcc_set_dcf_param(const char *param_name, const char *param_value)
+{
+    CM_CHECK_NULL_PTR(param_name);
+    cm_reset_error();
+    init_dcc_errno_desc();
+
+    return dcf_set_param(param_name, param_value);
 }
 
 #ifdef __cplusplus
