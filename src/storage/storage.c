@@ -23,13 +23,14 @@
  */
 
 #include "cm_text.h"
-#include "storage.h"
 #include "srv_param.h"
 #include "db_handle.h"
 #include "gstor_adpt.h"
+#include "gstor_executor.h"
+#include "storage.h"
 
 typedef void(*db_shutdown_t)(void);
-typedef int(*db_startup_t)(char *path);
+typedef int(*db_startup_t)(char *path, db_startup_mode_t startup_mode);
 typedef void(*db_free_t)(void *handle);
 typedef void(*db_clean_t)(void *handle);
 typedef int(*db_alloc_t)(void **handle);
@@ -43,6 +44,8 @@ typedef int(*db_get_t)(void *handle, char *key, uint32 key_len, char **val, uint
 typedef int(*db_cursor_next_t)(void *handle, bool32 *eof);
 typedef int(*db_open_cursor_t)(void *handle, char *key, uint32 key_len, uint32 flags, bool32 *eof);
 typedef int(*db_cursor_fetch_t)(void *handle, char **key, uint32 *key_len, char **val, uint32 *val_len);
+typedef int(*db_backup_t)(void *handle, const char *bak_format);
+typedef int(*db_restore_t)(void *handle, const char *restore_path, const char *old_path, const char *new_path);
 
 typedef struct st_db {
     db_put_t          put;
@@ -60,6 +63,8 @@ typedef struct st_db {
     db_open_cursor_t  open_cursor;
     db_cursor_next_t  cursor_next;
     db_cursor_fetch_t cursor_fetch;
+    db_backup_t       backup;
+    db_restore_t      restore;
 }db_t;
 
 typedef enum en_dbtype {
@@ -70,7 +75,7 @@ typedef enum en_dbtype {
 static const db_t g_dbs[] = {
     { gstor_put, gstor_del, gstor_get, gstor_free, gstor_alloc, gstor_open_table, gstor_clean, gstor_begin,
       gstor_commit, gstor_startup, gstor_shutdown, gstor_rollback, gstor_open_cursor, gstor_cursor_next,
-      gstor_cursor_fetch },
+      gstor_cursor_fetch, gstor_backup, gstor_restore},
 };
 
 static const db_t *g_curr_db = NULL;
@@ -111,7 +116,7 @@ static inline void deinit_g_handle_pool(void)
     }
 }
 
-status_t db_startup(void)
+status_t db_startup(db_startup_mode_t startup_mode)
 {
     param_value_t data_path, dbtype;
     char real_data_path[CM_FILE_NAME_BUFFER_SIZE] = {0};
@@ -132,7 +137,7 @@ status_t db_startup(void)
             return CM_ERROR;
     }
 
-    if (g_dbs[dbtype.uint32_val].startup(real_data_path) != CM_SUCCESS) {
+    if (g_dbs[dbtype.uint32_val].startup(real_data_path, startup_mode) != CM_SUCCESS) {
         LOG_RUN_ERR("[STG] db %u startup failed", dbtype.uint32_val);
         return CM_ERROR;
     }
@@ -291,4 +296,16 @@ status_t db_rollback(void *handle)
 {
     STG_CHECK_DB_STARTUP;
     return STG_HANDLE->rollback(((db_handle_t*)handle)->handle);
+}
+
+status_t db_bakup(void *handle, const char *bak_format)
+{
+    STG_CHECK_DB_STARTUP;
+    return STG_HANDLE->backup(((db_handle_t*)handle)->handle, bak_format);
+}
+
+status_t db_restore(void *handle, const char *restore_path, const char *old_path, const char *new_path)
+{
+    STG_CHECK_DB_STARTUP;
+    return STG_HANDLE->restore(((db_handle_t*)handle)->handle, restore_path, old_path, new_path);
 }

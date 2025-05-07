@@ -34,9 +34,14 @@
 extern "C" {
 #endif
 
+typedef enum en_db_startup_mode {
+    STARTUP_MODE_OPEN = 0,
+    STARTUP_MODE_NOMOUNT = 1,
+} db_startup_mode_t;
+
 void db_shutdown(void);
 
-status_t db_startup(void);
+status_t db_startup(db_startup_mode_t startup_mode);
 
 void db_free(void *handle);
 
@@ -61,6 +66,10 @@ status_t db_begin(void *handle);
 status_t db_commit(void *handle);
 
 status_t db_rollback(void *handle);
+
+status_t db_bakup(void *handle, const char *bak_format);
+
+status_t db_restore(void *handle, const char *restore_path, const char *old_path, const char *new_path);
 
 #ifdef __cplusplus
 }
