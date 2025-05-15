@@ -40,7 +40,7 @@ static status_t init_logger_param(log_param_t *log_param)
         CM_RETURN_IFERR(srv_get_param(DCC_PARAM_DATA_PATH, &param_value));
         CM_RETURN_IFERR(realpath_file(param_value.str_val, real_path, CM_FILE_NAME_BUFFER_SIZE));
         PRTS_RETURN_IFERR(snprintf_s(log_param->log_home, CM_MAX_LOG_HOME_LEN, CM_MAX_LOG_HOME_LEN - 1, "%s/%s",
-            real_path, "log"));
+            real_path, "dcc_log"));
     } else {
         CM_RETURN_IFERR(realpath_file(param_value.str_val, real_path, CM_FILE_NAME_BUFFER_SIZE));
         PRTS_RETURN_IFERR(snprintf_s(log_param->log_home, CM_MAX_LOG_HOME_LEN, CM_MAX_LOG_HOME_LEN - 1,
@@ -89,11 +89,11 @@ status_t init_logger(void)
     log_param->log_instance_startup = CM_FALSE;
     CM_RETURN_IFERR(init_logger_param(log_param));
     PRTS_RETURN_IFERR(snprintf_s(file_name, CM_FULL_PATH_BUFFER_SIZE, CM_FULL_PATH_BUFFER_SIZE - 1, "%s/run/%s",
-        log_param->log_home, "dcc.rlog"));
+        log_param->log_home, "run.log"));
     CM_RETURN_IFERR(cm_log_init(LOG_RUN, file_name));
 
     PRTS_RETURN_IFERR(snprintf_s(file_name, CM_FULL_PATH_BUFFER_SIZE, CM_FULL_PATH_BUFFER_SIZE - 1, "%s/debug/%s",
-        log_param->log_home, "dcc.dlog"));
+        log_param->log_home, "debug.log"));
     CM_RETURN_IFERR(cm_log_init(LOG_DEBUG, file_name));
 
     PRTS_RETURN_IFERR(snprintf_s(file_name, CM_FULL_PATH_BUFFER_SIZE, CM_FULL_PATH_BUFFER_SIZE - 1, "%s/oper/%s",
@@ -113,7 +113,7 @@ status_t init_logger(void)
     CM_RETURN_IFERR(cm_log_init(LOG_TRACE, file_name));
 
     PRTS_RETURN_IFERR(snprintf_s(file_name, CM_FULL_PATH_BUFFER_SIZE, CM_FULL_PATH_BUFFER_SIZE - 1, "%s/profile/%s",
-        log_param->log_home, "dcc.plog"));
+        log_param->log_home, "profile.log"));
     CM_RETURN_IFERR(cm_log_init(LOG_PROFILE, file_name));
 
     log_param->log_instance_startup = CM_TRUE;
