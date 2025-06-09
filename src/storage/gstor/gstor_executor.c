@@ -572,12 +572,12 @@ static status_t gstor_init_loggers(void)
 
     // RUN
     PRTS_RETURN_IFERR(snprintf_s(file_name, GS_FILE_NAME_BUFFER_SIZE, GS_MAX_FILE_NAME_LEN, "%s/run/%s",
-        log_param->log_home, "gstor.rlog"));
+        log_param->log_home, "gstor_run.log"));
     cm_log_init(LOG_RUN, file_name);
 
     // DEBUG
     PRTS_RETURN_IFERR(snprintf_s(file_name, GS_FILE_NAME_BUFFER_SIZE, GS_MAX_FILE_NAME_LEN, "%s/debug/%s",
-        log_param->log_home, "gstor.dlog"));
+        log_param->log_home, "gstor_debug.log"));
     cm_log_init(LOG_DEBUG, file_name);
 
     // ALARM
@@ -697,7 +697,7 @@ void gstor_shutdown(void)
     gstor_deinit_config();
 }
 
-int gstor_startup(char *data_path)
+int gstor_startup(char *data_path, unsigned int startup_mode)
 {
     do {
         GS_BREAK_IF_ERROR(cm_start_timer(g_timer()));
@@ -705,13 +705,15 @@ int gstor_startup(char *data_path)
         GS_BREAK_IF_ERROR(gstor_lock_db());
         GS_BREAK_IF_ERROR(alck_init_ctx(&g_instance->kernel));
         GS_BREAK_IF_ERROR(knl_startup(&g_instance->kernel));
-        GS_BREAK_IF_ERROR(gstor_start_db(&g_instance->kernel));
-        GS_LOG_RUN_INF("gstore started successfully!");
+        if (startup_mode == STARTUP_MODE_OPEN) {
+            GS_BREAK_IF_ERROR(gstor_start_db(&g_instance->kernel));
+        }
+        GS_LOG_RUN_INF("gstore started successfully with startup_mode:%d!", startup_mode);
         return GS_SUCCESS;
     } while (GS_FALSE);
 
     gstor_shutdown();
-    GS_LOG_RUN_INF("gstore started failed!");
+    GS_LOG_RUN_INF("gstore started failed with startup_mode:%d!", startup_mode);
     return GS_ERROR;
 }
 
@@ -1114,6 +1116,78 @@ int gstor_attach_pending_rm(void *handle)
     knl_session_t *session = EC_SESSION(handle);
     (void)knl_attach_pending_rm(session, &session->rm->xa_xid);
     return GS_SUCCESS;
+}
+
+int gstor_backup(void *handle, const char *bak_format)
+{
+    knl_backup_t backup = { 0 };
+    knl_backup_t *param_backup = &backup;
+    param_backup->type = BACKUP_MODE_FULL;
+    param_backup->device = DEVICE_DISK;
+    param_backup->format.str = (char *)bak_format;
+    param_backup->format.len = strlen(bak_format);
+    param_backup->finish_scn = DB_CURR_SCN(EC_SESSION(handle));
+    param_backup->target_info.target = TARGET_ALL;
+    param_backup->target_info.backup_arch_mode = ARCHIVELOG_ALL;
+    param_backup->crypt_info.encrypt_alg = ENCRYPT_NONE;
+    int ret = knl_backup(EC_SESSION(handle), param_backup);
+    return ret;
+}
+
+int gstor_restore(void *handle, const char *restore_path, const char *old_path, const char *new_path)
+{
+    knl_session_t *session = (knl_session_t *)EC_SESSION(handle);
+    knl_attr_t *attr = &session->kernel->attr;
+    int ret = GS_SUCCESS;
+
+    if (old_path == NULL || new_path == NULL) {
+        GS_LOG_RUN_INF("old_path or new_path null, no need convert_restore_path!");
+    } else {
+        char convert_value[GS_FILE_NAME_BUFFER_SIZE * 2] = {0};
+        const int buffer_size = GS_FILE_NAME_BUFFER_SIZE * 2;
+        PRTS_RETURN_IFERR(snprintf_s(convert_value, buffer_size, buffer_size - 1, "%s,%s", old_path, new_path));
+
+        ret = knl_get_convert_params("DB_FILE_NAME_CONVERT", convert_value, &attr->data_file_convert, "home");
+        if (ret != GS_SUCCESS) {
+            GS_LOG_RUN_ERR("gstor DB_FILE_NAME_CONVERT failed with retcode(%d)!", ret);
+            return GS_ERROR;
+        }
+
+        ret = knl_get_convert_params("LOG_FILE_NAME_CONVERT", convert_value, &attr->log_file_convert, "home");
+        if (ret != GS_SUCCESS) {
+            GS_LOG_RUN_ERR("gstor LOG_FILE_NAME_CONVERT failed with retcode(%d)!", ret);
+            return GS_ERROR;
+        }
+        GS_LOG_RUN_INF("gstor convert_restore_path success, convert_value=%s", convert_value);
+    }
+
+    knl_restore_t restore = { 0 };
+    knl_restore_t *param_restore = &restore;
+    param_restore->type = RESTORE_FROM_PATH;
+    param_restore->device = DEVICE_DISK;
+    param_restore->path.str = (char *)restore_path;
+    param_restore->path.len = strlen(restore_path);
+    param_restore->file_type = RESTORE_ALL;
+    param_restore->crypt_info.encrypt_alg = ENCRYPT_NONE;
+    if (EC_SESSION(handle)->kernel->db.status != DB_STATUS_NOMOUNT) {
+        GS_LOG_RUN_ERR("gstore restore failed since db status(%d) not DB_STATUS_NOMOUNT!",
+            EC_SESSION(handle)->kernel->db.status);
+        return GS_ERROR;
+    }
+
+    ret = knl_restore(EC_SESSION(handle), param_restore);
+    if (ret != GS_SUCCESS) {
+        GS_LOG_RUN_ERR("gstore restore failed with retcode(%d)!", ret);
+        return GS_ERROR;
+    }
+
+    knl_recover_t recover = { 0 };
+    recover.action = RECOVER_NORMAL;
+    ret = knl_recover(EC_SESSION(handle), &recover);
+    if (ret != GS_SUCCESS) {
+        GS_LOG_RUN_ERR("gstore recover failed with retcode(%d)!", ret);
+    }
+    return ret;
 }
 
 #ifdef __cplusplus
