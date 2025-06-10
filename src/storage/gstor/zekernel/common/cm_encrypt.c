@@ -289,6 +289,7 @@ status_t cm_encyrpt_init(cm_encrypt_ctrl *ctrl, cipher_alg_type alg_type, uchar 
 
 status_t cm_init_drbg(void)
 {
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
     RAND_DRBG *master_drbg = NULL;
 
     master_drbg = RAND_DRBG_get0_master();
@@ -317,6 +318,7 @@ status_t cm_init_drbg(void)
         return GS_ERROR;
     }
 
+#endif
     return GS_SUCCESS;
 }
 

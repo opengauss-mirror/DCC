@@ -90,31 +90,31 @@ status_t init_logger(void)
     CM_RETURN_IFERR(init_logger_param(log_param));
     PRTS_RETURN_IFERR(snprintf_s(file_name, CM_FULL_PATH_BUFFER_SIZE, CM_FULL_PATH_BUFFER_SIZE - 1, "%s/run/%s",
         log_param->log_home, "run.log"));
-    CM_RETURN_IFERR(cm_log_init(LOG_RUN, file_name));
+    CM_RETURN_IFERR(cm_log_init(CM_LOG_RUN, file_name));
 
     PRTS_RETURN_IFERR(snprintf_s(file_name, CM_FULL_PATH_BUFFER_SIZE, CM_FULL_PATH_BUFFER_SIZE - 1, "%s/debug/%s",
         log_param->log_home, "debug.log"));
-    CM_RETURN_IFERR(cm_log_init(LOG_DEBUG, file_name));
+    CM_RETURN_IFERR(cm_log_init(CM_LOG_DEBUG, file_name));
 
     PRTS_RETURN_IFERR(snprintf_s(file_name, CM_FULL_PATH_BUFFER_SIZE, CM_FULL_PATH_BUFFER_SIZE - 1, "%s/oper/%s",
         log_param->log_home, "oper.log"));
-    CM_RETURN_IFERR(cm_log_init(LOG_OPER, file_name));
+    CM_RETURN_IFERR(cm_log_init(CM_LOG_OPER, file_name));
 
     PRTS_RETURN_IFERR(snprintf_s(file_name, CM_FULL_PATH_BUFFER_SIZE, CM_FULL_PATH_BUFFER_SIZE - 1, "%s/alarm/%s",
         log_param->log_home, "alarm.log"));
-    CM_RETURN_IFERR(cm_log_init(LOG_ALARM, file_name));
+    CM_RETURN_IFERR(cm_log_init(CM_LOG_ALARM, file_name));
 
     PRTS_RETURN_IFERR(snprintf_s(file_name, CM_FULL_PATH_BUFFER_SIZE, CM_FULL_PATH_BUFFER_SIZE - 1, "%s/mec/%s",
         log_param->log_home, "mec.log"));
-    CM_RETURN_IFERR(cm_log_init(LOG_MEC, file_name));
+    CM_RETURN_IFERR(cm_log_init(CM_LOG_MEC, file_name));
 
     PRTS_RETURN_IFERR(snprintf_s(file_name, CM_FULL_PATH_BUFFER_SIZE, CM_FULL_PATH_BUFFER_SIZE - 1, "%s/trace/%s",
         log_param->log_home, "trace.log"));
-    CM_RETURN_IFERR(cm_log_init(LOG_TRACE, file_name));
+    CM_RETURN_IFERR(cm_log_init(CM_LOG_TRACE, file_name));
 
     PRTS_RETURN_IFERR(snprintf_s(file_name, CM_FULL_PATH_BUFFER_SIZE, CM_FULL_PATH_BUFFER_SIZE - 1, "%s/profile/%s",
         log_param->log_home, "profile.log"));
-    CM_RETURN_IFERR(cm_log_init(LOG_PROFILE, file_name));
+    CM_RETURN_IFERR(cm_log_init(CM_LOG_PROFILE, file_name));
 
     log_param->log_instance_startup = CM_TRUE;
     log_param->log_suppress_enable = CM_FALSE;
