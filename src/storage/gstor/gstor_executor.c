@@ -559,9 +559,6 @@ static status_t gstor_init_loggers(void)
 
     log_param_t *log_param = cm_log_param_instance();
 
-    PRTS_RETURN_IFERR(snprintf_s(log_param->log_home,
-        GS_MAX_PATH_BUFFER_SIZE, GS_MAX_PATH_LEN, "%s/log", g_instance->home));
-
     MEMS_RETURN_IFERR(strcpy_sp(log_param->instance_name, GS_MAX_NAME_LEN, g_instance->kernel.instance_name));
 
     log_param->log_backup_file_count = 10;
@@ -695,6 +692,12 @@ void gstor_shutdown(void)
     CM_FREE_PTR(g_instance);
 
     gstor_deinit_config();
+}
+
+void gstor_set_log_path(char *path)
+{
+    log_param_t *log_param = cm_log_param_instance();
+    (void)snprintf_s(log_param->log_home, GS_MAX_PATH_BUFFER_SIZE, GS_MAX_PATH_LEN, "%s/gstor_log", path);
 }
 
 int gstor_startup(char *data_path, unsigned int startup_mode)

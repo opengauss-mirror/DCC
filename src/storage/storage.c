@@ -136,7 +136,7 @@ status_t db_startup(db_startup_mode_t startup_mode)
             LOG_RUN_ERR("[STG] dbtype %u not supported now", dbtype.uint32_val);
             return CM_ERROR;
     }
-
+    gstor_set_log_path(cm_log_param_instance()->log_home);
     if (g_dbs[dbtype.uint32_val].startup(real_data_path, startup_mode) != CM_SUCCESS) {
         LOG_RUN_ERR("[STG] db %u startup failed", dbtype.uint32_val);
         return CM_ERROR;
