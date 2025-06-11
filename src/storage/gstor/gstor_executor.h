@@ -89,6 +89,7 @@ EXPORT_API int gstor_detach_suspend_rm(void *handle);
 EXPORT_API int gstor_attach_suspend_rm(void *handle);
 EXPORT_API int gstor_detach_pending_rm(void *handle);
 EXPORT_API int gstor_attach_pending_rm(void *handle);
+EXPORT_API void gstor_set_log_path(char *path);
 
 #ifdef __cplusplus
 }
