@@ -476,6 +476,7 @@ static status_t gstor_init_default_params(void)
     attr->enable_degrade_search = GS_TRUE;
     attr->delay_cleanout = GS_TRUE;
     attr->ctrllog_backup_level = CTRLLOG_BACKUP_LEVEL_FULL;
+    attr->arch_ignore_backup = GS_TRUE;
     attr->timer = g_timer();
     PRTS_RETURN_IFERR(sprintf_s(attr->pwd_alg, GS_NAME_BUFFER_SIZE, "%s", "PBKDF2"));
     return GS_SUCCESS;
