@@ -27,7 +27,11 @@
 #include "cm_defs.h"
 #include "cm_text.h"
 #include "openssl/evp.h"
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
 #include "openssl/rand_drbg.h"
+#else
+#include "openssl/rand.h"
+#endif
 #include "openssl/ssl.h"
 
 #ifdef __cplusplus

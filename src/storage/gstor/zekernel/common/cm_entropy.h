@@ -25,8 +25,12 @@
 #define __CM_ENTROPY_H__
 
 #include "cm_defs.h"
-#include "openssl/rand_drbg.h"
 #include "openssl/evp.h"
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
+#include "openssl/rand_drbg.h"
+#else
+#include "openssl/rand.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {

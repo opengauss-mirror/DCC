@@ -103,7 +103,6 @@ mkdir -p $DCC_LIBRARYS/huawei_security
 mkdir -p $DCC_LIBRARYS/openssl
 mkdir -p $DCC_LIBRARYS/huawei_security
 mkdir -p $DCC_LIBRARYS/openssl
-mkdir -p $DCC_LIBRARYS/lz4
 mkdir -p $DCC_LIBRARYS/zstd
 mkdir -p $DCC_LIBRARYS/cJSON
 mkdir -p $DCC_LIBRARYS/zlib
@@ -118,14 +117,12 @@ COPT_LIB_PATH=${binarylib_dir}/kernel/component/
 cp -r $PLAT_LIB_PATH/Huawei_Secure_C/comm/lib     $DCC_LIBRARYS/huawei_security/lib
 cp -r $LIB_PATH/openssl/comm/lib                  $DCC_LIBRARYS/openssl/lib
 cp -r $LIB_PATH/zstd/lib                          $DCC_LIBRARYS/zstd/lib
-cp -r $LIB_PATH/lz4/comm/lib                      $DCC_LIBRARYS/lz4/lib
 cp -r $LIB_PATH/cjson/comm/lib                    $DCC_LIBRARYS/cJSON/lib
 cp -r $LIB_PATH/zlib*/comm/lib                    $DCC_LIBRARYS/zlib/lib
 
 cp -r $PLAT_LIB_PATH/Huawei_Secure_C/comm/include $DCC_LIBRARYS/huawei_security/include
 cp -r $LIB_PATH/openssl/comm/include              $DCC_LIBRARYS/openssl/include
 cp -r $LIB_PATH/zstd/include                      $DCC_LIBRARYS/zstd/include
-cp -r $LIB_PATH/lz4/comm/include                  $DCC_LIBRARYS/lz4/include
 cp -r $LIB_PATH/cjson/comm/include/cjson          $DCC_LIBRARYS/cJSON/include
 cp -r $LIB_PATH/zlib*/comm/include                $DCC_LIBRARYS/zlib/include
 cp -r /usr/include/libaio.h                       $DCC_LIBRARYS/libaio/include
