@@ -94,7 +94,7 @@ static void dcf_log_output_callback(int log_type, int log_level, const char *cod
 {
     va_list args;
     va_start(args, format);
-    if (log_type == CM_LOG_RUN || log_type == CM_LOG_DEBUG || log_type == CM_LOG_OPER || log_type == CM_LOG_PROFILE) {
+    if (log_type == LOG_RUN || log_type == LOG_DEBUG || log_type == LOG_OPER || log_type == LOG_PROFILE) {
         cm_write_normal_log_common((log_type_t)log_type, (log_level_t)log_level, code_file_name, code_line_num,
             module_name, CM_TRUE, format, args);
     }
