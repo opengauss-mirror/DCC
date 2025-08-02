@@ -8361,6 +8361,10 @@ static heap_segment_t *stats_get_part_heap_segment(knl_session_t *session,
     heap_segment_t *heap_seg = NULL;
     table_part_t *table_subpart = NULL;
 
+    if (table_part == NULL) {
+        return NULL;
+    }
+
     if (!IS_PARENT_TABPART(&table_part->desc)) {
         if (!STATS_IS_INVALID_PART_TABLE(table_part)) {
             heap_seg = HEAP_SEGMENT(table_part->heap.entry, table_part->heap.segment);
@@ -8405,6 +8409,10 @@ static btree_segment_t *stats_get_part_btree_segment(knl_session_t *session,
 {
     btree_segment_t *btree_seg = NULL;
     index_part_t *index_subpart = NULL;
+
+    if (index_part == NULL) {
+        return NULL;
+    }
 
     if (!IS_PARENT_IDXPART(&index_part->desc)) {
         if (!STATS_IS_INVALID_PART_INDEX(index_part)) {

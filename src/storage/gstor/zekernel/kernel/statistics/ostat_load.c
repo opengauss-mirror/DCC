@@ -1141,6 +1141,9 @@ status_t cbo_load_tmptab_histgram(knl_session_t *session, dc_entity_t *entity, c
     } else {
         table_t *table = &entity->table;
         knl_temp_cache_t *temp_cache = knl_get_temp_cache((knl_handle_t)session, table->desc.uid, table->desc.id);
+        if (temp_cache == NULL) {
+            return GS_ERROR;
+        }
         memory = temp_cache->memory;
     }
 
@@ -1195,6 +1198,9 @@ status_t cbo_load_tmptab_column_stats(knl_session_t *session, dc_entity_t *entit
 
     memory_context_t *memory = NULL;
     knl_temp_cache_t *temp_cache = knl_get_temp_cache((knl_handle_t)session, table->desc.uid, table->desc.id);
+    if (temp_cache == NULL) {
+        return GS_ERROR;
+    }
 
     if (!IS_LTT_BY_ID(table->desc.id)) {
         memory = temp_cache->memory;
@@ -1449,7 +1455,9 @@ status_t cbo_alloc_tmptab_stats(knl_session_t *session, dc_entity_t *entity, knl
             return GS_ERROR;
         }
 
-        temp_cache->cbo_stats = entity->cbo_table_stats;
+        if (temp_cache != NULL) {
+            temp_cache->cbo_stats = entity->cbo_table_stats;
+        }
 
         return GS_SUCCESS;
     }

@@ -563,7 +563,7 @@ static status_t heap_alloc_itl(knl_session_t *session, knl_cursor_t *cursor, hea
         return GS_SUCCESS;
     }
 
-    if (DB_NOT_READY(session)) {
+    if (DB_NOT_READY(session) && *itl != NULL) {
         (*itl)->is_active = 0;
         return GS_SUCCESS;
     }
@@ -5710,8 +5710,10 @@ static void heap_get_chain_row(knl_session_t *session, knl_cursor_t *cursor, row
         *chain_row = NULL;
     } else {
         *chain_row = HEAP_GET_ROW(page, &dir);
-        errno_t ret = memcpy_sp(row, HEAP_MAX_MIGR_ROW_SIZE, *chain_row, (*chain_row)->size);
-        knl_securec_check(ret);
+        if (*chain_row != NULL) {
+            errno_t ret = memcpy_sp(row, HEAP_MAX_MIGR_ROW_SIZE, *chain_row, (*chain_row)->size);
+            knl_securec_check(ret);
+        }
     }
 
     if ((*chain_row) == NULL || (ROW_ITL_ID(*chain_row) == GS_INVALID_ID8) || !(*chain_row)->is_changed) {

@@ -255,6 +255,10 @@ static status_t srv_sess_exec_watch(session_t *session)
     } else {
         if (watch_key.str != NULL) {
             sess_watch_record_t *watch_record = (sess_watch_record_t *) exc_alloc(sizeof(sess_watch_record_t));
+            if (watch_record == NULL) {
+                util_convert_exc_errno();
+                return CM_ERROR;
+            }
             watch_record->is_prefix = option.watch_op.is_prefix;
             watch_record->session_id = req.session_id;
             watch_record->key.len = watch_key.len;

@@ -275,7 +275,7 @@ static status_t part_init_decoders(knl_session_t *session, dc_entity_t *entity, 
     uint32 partkeys, part_key_t *key, uint16 count)
 {
     uint8 bits;
-    uint16 i, j;
+    uint16 i = 0;
     uint16 id = 0;
     uint16 pos, ex_maps;
 
@@ -300,7 +300,7 @@ static status_t part_init_decoders(knl_session_t *session, dc_entity_t *entity, 
         decoders[i].count = partkeys;
         decoders[i].buf = (char *)key;
 
-        for (j = 0; j < partkeys; j++) {
+        for (uint32 j = 0; j < partkeys; j++) {
             bits = part_get_key_bits(key, id);
             knl_panic_log(bits != PART_KEY_BITS_MIN, "curr bits is the min value, panic info: table %s",
                           entity->table.desc.name);

@@ -1939,7 +1939,7 @@ static status_t pcrh_alloc_itl(knl_session_t *session, knl_cursor_t *cursor, hea
         return GS_SUCCESS;
     }
 
-    if (DB_NOT_READY(session)) {
+    if (DB_NOT_READY(session) && *itl != NULL) {
         (*itl)->is_active = 0;
         return GS_SUCCESS;
     }
