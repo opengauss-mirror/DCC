@@ -202,7 +202,12 @@ status_t exc_pque_delete_min(lease_expire_pque_t *pque, lease_expire_ele_t **min
         return CM_ERROR;
     }
 
+    if (pque->eles == NULL || EXC_PQUE_MIN_ELE_IDX > pque->size) {
+        LOG_DEBUG_ERR("[EXC LEASE] pque->eles is NULL or pque->size is invalid\n");
+        return CM_ERROR;
+    }
     *min = pque->eles[EXC_PQUE_MIN_ELE_IDX];
+
     lease_expire_ele_t *last = pque->eles[pque->size];
     pque->size--;
     if (pque->size == 0) {

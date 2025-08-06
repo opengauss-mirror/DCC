@@ -963,7 +963,7 @@ static status_t ckpt_prepare_normal(knl_session_t *session, ckpt_context_t *ctx,
 
     count = ckpt_get_neighbors(session, curr_ctrl, &first_page_id);
     to_flush_pageid = first_page_id;
-    for (uint16 i = 0; i < count; i++) {
+    for (uint32 i = 0; i < count; i++) {
         to_flush_pageid.page = first_page_id.page + i;
 
         /* get ctrl */

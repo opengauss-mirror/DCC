@@ -263,7 +263,7 @@ static status_t clt_parse_url(clt_handle_t *handle, char *server_list)
     text_t text, l_text, r_text;
     cm_str2text(server_list, &text);
     while (text.len != 0) {
-        if (server_cnt > MAX_SERVER_SIZE) {
+        if (server_cnt >= MAX_SERVER_SIZE) {
             return CM_ERROR;
         }
         cm_split_text(&text, URL_SPLIT_CHAR, URL_END_CHAR, &l_text, &r_text);

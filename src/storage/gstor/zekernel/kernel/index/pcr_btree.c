@@ -552,7 +552,7 @@ static status_t pcrb_alloc_itl(knl_session_t *session, knl_cursor_t *cursor, btr
     pcrb_init_itl(session, cursor, page, itl);
     *changed = GS_TRUE;
 
-    if (SECUREC_UNLIKELY(DB_NOT_READY(session))) {
+    if (SECUREC_UNLIKELY(DB_NOT_READY(session)) && *itl != NULL) {
         (*itl)->is_active = 0;
         return GS_SUCCESS;
     }

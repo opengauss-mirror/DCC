@@ -578,12 +578,12 @@ static void tx_end(knl_session_t *session, bool32 is_commit, knl_scn_t xa_scn)
         session->kernel->stat.txn_page_end_waits += KNL_NOW(session) - begin_time;
     }
 
-    if (txn->undo_pages.count > 0) {
+    if (txn->undo_pages.count > 0 && session->rm != NULL) {
         undo_release_pages(session, undo, &txn->undo_pages, GS_TRUE);
         session->rm->txn_alarm_enable = GS_TRUE;
     }
 
-    if (session->rm->noredo_undo_pages.count > 0) {
+    if (session->rm != NULL && session->rm->noredo_undo_pages.count > 0) {
         undo_release_pages(session, undo, &rm->noredo_undo_pages, GS_FALSE);
     }
 

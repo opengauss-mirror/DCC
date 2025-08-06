@@ -553,6 +553,10 @@ static status_t srv_try_attach_agent(session_t *session, agent_t **agent)
 
         if (node != NULL) {
             *agent = OBJECT_OF(agent_t, node);
+            if (*agent == NULL) {
+                LOG_DEBUG_ERR("[agent] srv try attach agent, agent is NULL, session id %u", session->id);
+                return CM_ERROR;
+            }
             srv_bind_sess_agent(session, *agent);
             return CM_SUCCESS;
         }

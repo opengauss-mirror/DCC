@@ -2455,6 +2455,9 @@ static status_t spc_create_space_prepare(knl_session_t *session, knl_space_def_t
     uint32 used_count = 0;
     for (uint32 i = 0; i < GS_MAX_SPACES; i++) {
         space = SPACE_GET(i);
+        if (space == NULL) {
+            return GS_ERROR;
+        }
         if (space->ctrl->used) {
             if (cm_text_str_equal(&def->name, space->ctrl->name)) {
                 GS_THROW_ERROR(ERR_SPACE_ALREADY_EXIST, space->ctrl->name);
