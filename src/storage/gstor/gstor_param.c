@@ -39,7 +39,7 @@ config_item_t g_parameters[] = {
 #endif
     { "PAGE_SIZE",            GS_TRUE, ATTR_NONE, "8K",             NULL,  NULL,     "-",    "-",  "GS_TYPE_INTEGER" },
     { "SPACE_SIZE",           GS_TRUE, ATTR_NONE, "128M",           NULL,  NULL,     "-",    "-",  "GS_TYPE_INTEGER" },
-    { "USE_LARGE_PAGES",      GS_TRUE, ATTR_NONE, "TRUE",           NULL,  NULL,     "-",    "-",  "GS_TYPE_INTEGER" },
+    { "USE_LARGE_PAGES",      GS_TRUE, ATTR_NONE, "FALSE",          NULL,  NULL,     "-",    "-",  "GS_TYPE_INTEGER" },
     { "UNDO_TABLESPACE",      GS_TRUE, ATTR_NONE, "UNDO",           NULL,  NULL,     "-",    "-",  "GS_TYPE_INTEGER" },
     { "CONTROL_FILES",        GS_TRUE, ATTR_NONE, "",               NULL,  NULL,     "-",    "-",  "GS_TYPE_VARCHAR" },
     { "ARCHIVE_FORMAT",       GS_TRUE, ATTR_NONE, "arch_%r_%s.arc", NULL,  NULL,     "-",    "-",  "GS_TYPE_VARCHAR" },
