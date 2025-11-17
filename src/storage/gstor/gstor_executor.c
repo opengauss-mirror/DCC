@@ -476,6 +476,7 @@ static status_t gstor_init_default_params(void)
     attr->enable_degrade_search = GS_TRUE;
     attr->delay_cleanout = GS_TRUE;
     attr->ctrllog_backup_level = CTRLLOG_BACKUP_LEVEL_FULL;
+    attr->arch_ignore_backup = GS_TRUE;
     attr->timer = g_timer();
     PRTS_RETURN_IFERR(sprintf_s(attr->pwd_alg, GS_NAME_BUFFER_SIZE, "%s", "PBKDF2"));
     return GS_SUCCESS;
@@ -558,9 +559,6 @@ static status_t gstor_init_loggers(void)
     cm_log_allinit();
 
     log_param_t *log_param = cm_log_param_instance();
-
-    PRTS_RETURN_IFERR(snprintf_s(log_param->log_home,
-        GS_MAX_PATH_BUFFER_SIZE, GS_MAX_PATH_LEN, "%s/log", g_instance->home));
 
     MEMS_RETURN_IFERR(strcpy_sp(log_param->instance_name, GS_MAX_NAME_LEN, g_instance->kernel.instance_name));
 
@@ -695,6 +693,12 @@ void gstor_shutdown(void)
     CM_FREE_PTR(g_instance);
 
     gstor_deinit_config();
+}
+
+void gstor_set_log_path(char *path)
+{
+    log_param_t *log_param = cm_log_param_instance();
+    (void)snprintf_s(log_param->log_home, GS_MAX_PATH_BUFFER_SIZE, GS_MAX_PATH_LEN, "%s/gstor_log", path);
 }
 
 int gstor_startup(char *data_path, unsigned int startup_mode)
