@@ -845,7 +845,7 @@ void exc_follower_build_ok_req_send(thread_t *thread)
         LOG_RUN_WAR("[EXC] wait build ok ack timeout, directly exit and try restart");
         (void)dcf_stop();
         (void)exc_follower_remove_build_status_file();
-        exit(0);
+        _exit(0);
     }
 }
 
@@ -855,7 +855,7 @@ void exc_follower_build_ok_ack_recv(thread_t *thread)
     LOG_RUN_INF("[EXC] build ok ack received, exit and restart.");
     (void)dcf_stop();
     (void)exc_follower_remove_build_status_file();
-    exit(0);
+    _exit(0);
 }
 
 void exc_follower_build_proc(thread_t *thread)
