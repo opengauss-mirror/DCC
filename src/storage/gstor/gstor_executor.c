@@ -67,6 +67,15 @@ static const char *g_lock_file = "gstor.lck";
 static const text_t g_user_table_col1 = { .str = (char*)"KEY",   .len = 3 };
 static const text_t g_user_table_col2 = { .str = (char*)"VALUE", .len = 5 };
 
+/* Reference count to protect g_instance from being freed during business operations */
+static volatile uint32 g_instance_ref_count = 0;
+static spinlock_t g_instance_ref_lock = 0;
+/* Shutdown flag to prevent new business operations during shutdown */
+static volatile bool32 g_shutting_down = GS_FALSE;
+static inline void gstor_wait_ref_release(void);
+static inline void gstor_dec_ref(void);
+static inline bool32 gstor_inc_ref(void);
+
 #define KNL_ATTR            (&g_instance->kernel.attr)
 #define MEM_POOL            (&g_instance->sga.buddy_pool)
 #define EC_LOBBUF(handle)   (&((ec_handle_t*)(handle))->lob_buf)
@@ -74,6 +83,7 @@ static const text_t g_user_table_col2 = { .str = (char*)"VALUE", .len = 5 };
 #define EC_SESSION(handle)  ((ec_handle_t*)(handle))->session
 #define EC_DC(handle)       (&(((ec_handle_t*)(handle))->dc))
 #define GS_MAX_KEY_LEN      (uint32)4000
+#define GS_DEF_SLEEP_TIME   (uint32)5
 
 static status_t gstor_init_config(char *data_path)
 {
@@ -227,6 +237,10 @@ static status_t gstor_create_table(const char *table_name)
 
 int gstor_open_table(void *handle, const char *table_name)
 {
+    if (!gstor_inc_ref()) {
+        return GS_ERROR;
+    }
+
     knl_dictionary_t *dc = EC_DC(handle);
     knl_close_dc(dc);
     if (gstor_open_kv_table(&g_instance->kernel, table_name, dc) != GS_SUCCESS) {
@@ -235,12 +249,18 @@ int gstor_open_table(void *handle, const char *table_name)
             status_t ret = gstor_create_table(table_name);
             if (ret != GS_SUCCESS) {
                 GS_LOG_RUN_ERR("create table failed, error code %d", cm_get_error_code());
+                gstor_dec_ref();
                 return GS_ERROR;
             }
-            return gstor_open_kv_table(&g_instance->kernel, table_name, dc);
+            ret = gstor_open_kv_table(&g_instance->kernel, table_name, dc);
+            gstor_dec_ref();
+            return ret;
         }
+        gstor_dec_ref();
+        return GS_ERROR;
     }
 
+    gstor_dec_ref();
     return GS_SUCCESS;
 }
 
@@ -665,6 +685,16 @@ void gstor_shutdown(void)
         return;
     }
 
+    /* Set shutdown flag to prevent new business operations */
+    cm_spin_lock(&g_instance_ref_lock, NULL);
+    g_shutting_down = GS_TRUE;
+    cm_spin_unlock(&g_instance_ref_lock);
+    GS_LOG_RUN_INF("gstor shutdown flag set, new business operations will be rejected");
+
+    /* Wait for all business operations to complete */
+    GS_LOG_RUN_INF("waiting for all business operations to complete before shutdown");
+    gstor_wait_ref_release();
+
     while (GS_TRUE) {
         if (g_instance->shutdown_ctx.phase == SHUTDOWN_PHASE_DONE ||
             cm_spin_try_lock(&g_instance->kernel.db.lock)) {
@@ -703,6 +733,11 @@ void gstor_set_log_path(char *path)
 
 int gstor_startup(char *data_path, unsigned int startup_mode)
 {
+    /* Clear shutdown flag at startup */
+    cm_spin_lock(&g_instance_ref_lock, NULL);
+    g_shutting_down = GS_FALSE;
+    cm_spin_unlock(&g_instance_ref_lock);
+    
     do {
         GS_BREAK_IF_ERROR(cm_start_timer(g_timer()));
         GS_BREAK_IF_ERROR(gstor_init_instance(data_path));
@@ -719,6 +754,57 @@ int gstor_startup(char *data_path, unsigned int startup_mode)
     gstor_shutdown();
     GS_LOG_RUN_INF("gstore started failed with startup_mode:%d!", startup_mode);
     return GS_ERROR;
+}
+
+/* Increment reference count to protect g_instance */
+static inline bool32 gstor_inc_ref(void)
+{
+    cm_spin_lock(&g_instance_ref_lock, NULL);
+    /* Check if shutdown is in progress */
+    if (g_shutting_down) {
+        cm_spin_unlock(&g_instance_ref_lock);
+        GS_LOG_DEBUG_ERR("gstor is shutting down, reject new business operation");
+        return GS_FALSE;
+    }
+    if (g_instance == NULL) {
+        cm_spin_unlock(&g_instance_ref_lock);
+        return GS_FALSE;
+    }
+    g_instance_ref_count++;
+    cm_spin_unlock(&g_instance_ref_lock);
+    return GS_TRUE;
+}
+
+/* Decrement reference count */
+static inline void gstor_dec_ref(void)
+{
+    cm_spin_lock(&g_instance_ref_lock, NULL);
+    if (g_instance_ref_count > 0) {
+        g_instance_ref_count--;
+    }
+    cm_spin_unlock(&g_instance_ref_lock);
+}
+
+/* Wait for all references to be released */
+static inline void gstor_wait_ref_release(void)
+{
+    uint32 wait_count = 0;
+    const uint32 max_wait_count = 1000; /* Wait up to 5 seconds (1000 * 5ms) */
+
+    while (GS_TRUE) {
+        cm_spin_lock(&g_instance_ref_lock, NULL);
+        if (g_instance_ref_count == 0) {
+            cm_spin_unlock(&g_instance_ref_lock);
+            break;
+        }
+        cm_spin_unlock(&g_instance_ref_lock);
+        
+        if (wait_count++ >= max_wait_count) {
+            GS_LOG_RUN_ERR("wait for instance ref release timeout, ref_count=%u", g_instance_ref_count);
+            break;
+        }
+        cm_sleep(GS_DEF_SLEEP_TIME);
+    }
 }
 
 static inline void gstor_prepare(knl_session_t *session, knl_cursor_t *cursor, lob_buf_t *lob_buf)
@@ -902,6 +988,10 @@ static status_t gstor_get_table_row(void *handle, char **key, unsigned int *key_
 
 int gstor_put(void *handle, char *key, unsigned int key_len, char *val, unsigned int val_len)
 {
+    if (!gstor_inc_ref()) {
+        return GS_ERROR;
+    }
+
     knl_cursor_t  *cursor  = EC_CURSOR(handle);
     knl_session_t *session = EC_SESSION(handle);
     knl_dictionary_t *dc = EC_DC(handle);
@@ -912,18 +1002,25 @@ int gstor_put(void *handle, char *key, unsigned int key_len, char *val, unsigned
         cm_set_ignore_log(GS_TRUE);
         if (gstor_insert(session, cursor, dc, key, key_len, val, val_len) == GS_SUCCESS) {
             cm_set_ignore_log(GS_FALSE);
+            gstor_dec_ref();
             return GS_SUCCESS;
         }
         cm_set_ignore_log(GS_FALSE);
         if (GS_ERRNO != ERR_DUPLICATE_KEY) {
+            gstor_dec_ref();
             return GS_ERROR;
         }
 
         cm_reset_error();
         bool32 updated = GS_FALSE;
 
-        GS_RETURN_IFERR(gstor_update(session, cursor, dc, key, key_len, val, val_len, &updated));
+        status_t status = gstor_update(session, cursor, dc, key, key_len, val, val_len, &updated);
+        if (status != GS_SUCCESS) {
+            gstor_dec_ref();
+            return status;
+        }
         if (updated) {
+            gstor_dec_ref();
             return GS_SUCCESS;
         }
     }
@@ -931,75 +1028,151 @@ int gstor_put(void *handle, char *key, unsigned int key_len, char *val, unsigned
 
 int gstor_del(void *handle, char *key, unsigned int key_len, unsigned int prefix, unsigned int *count)
 {
+    if (!gstor_inc_ref()) {
+        return GS_ERROR;
+    }
+
     knl_cursor_t  *cursor  = EC_CURSOR(handle);
     knl_session_t *session = EC_SESSION(handle);
     knl_dictionary_t *dc = EC_DC(handle);
 
     gstor_prepare(session, cursor, EC_LOBBUF(handle));
 
-    GS_RETURN_IFERR(gstor_open_cursor_internal(session, cursor, dc, CURSOR_ACTION_DELETE, IX_SYS_KV_01_ID));
+    status_t status = gstor_open_cursor_internal(session, cursor, dc, CURSOR_ACTION_DELETE, IX_SYS_KV_01_ID);
+    if (status != GS_SUCCESS) {
+        gstor_dec_ref();
+        return status;
+    }
 
-    GS_RETURN_IFERR(gstor_make_scan_key(session, cursor, key, key_len, prefix));
+    status = gstor_make_scan_key(session, cursor, key, key_len, prefix);
+    if (status != GS_SUCCESS) {
+        gstor_dec_ref();
+        return status;
+    }
 
-    GS_RETURN_IFERR(knl_fetch(session, cursor));
+    status = knl_fetch(session, cursor);
+    if (status != GS_SUCCESS) {
+        gstor_dec_ref();
+        return status;
+    }
 
     *count = 0;
     while (!cursor->eof) {
-        GS_RETURN_IFERR(knl_internal_delete(session, cursor));
-        GS_RETURN_IFERR(knl_fetch(session, cursor));
+        status = knl_internal_delete(session, cursor);
+        if (status != GS_SUCCESS) {
+            gstor_dec_ref();
+            return status;
+        }
+        status = knl_fetch(session, cursor);
+        if (status != GS_SUCCESS) {
+            gstor_dec_ref();
+            return status;
+        }
         (*count)++;
     }
+    gstor_dec_ref();
     return GS_SUCCESS;
 }
 
 int gstor_get(void *handle, char *key, unsigned int key_len, char **val, unsigned int *val_len, unsigned int *eof)
 {
+    if (!gstor_inc_ref()) {
+        return GS_ERROR;
+    }
+
     knl_cursor_t  *cursor  = EC_CURSOR(handle);
     knl_session_t *session = EC_SESSION(handle);
     knl_dictionary_t *dc = EC_DC(handle);
 
     gstor_prepare(session, cursor, EC_LOBBUF(handle));
 
-    GS_RETURN_IFERR(gstor_open_cursor_internal(session, cursor, dc, CURSOR_ACTION_SELECT, IX_SYS_KV_01_ID));
+    status_t status = gstor_open_cursor_internal(session, cursor, dc, CURSOR_ACTION_SELECT, IX_SYS_KV_01_ID);
+    if (status != GS_SUCCESS) {
+        gstor_dec_ref();
+        return status;
+    }
 
-    GS_RETURN_IFERR(gstor_make_scan_key(session, cursor, key, key_len, G_STOR_DEFAULT_FLAG));
+    status = gstor_make_scan_key(session, cursor, key, key_len, G_STOR_DEFAULT_FLAG);
+    if (status != GS_SUCCESS) {
+        gstor_dec_ref();
+        return status;
+    }
 
-    GS_RETURN_IFERR(knl_fetch(session, cursor));
+    status = knl_fetch(session, cursor);
+    if (status != GS_SUCCESS) {
+        gstor_dec_ref();
+        return status;
+    }
+    
     *eof = cursor->eof;
     if (*eof) {
+        gstor_dec_ref();
         return GS_SUCCESS;
     }
-    return gstor_get_table_row(handle, NULL, NULL, val, val_len);
+    
+    int ret = gstor_get_table_row(handle, NULL, NULL, val, val_len);
+    gstor_dec_ref();
+    return ret;
 }
 
 int gstor_open_cursor(void *handle, char *key, unsigned int key_len, unsigned int flags, unsigned int *eof)
 {
+    if (!gstor_inc_ref()) {
+        return GS_ERROR;
+    }
+
     knl_cursor_t  *cursor  = EC_CURSOR(handle);
     knl_session_t *session = EC_SESSION(handle);
     knl_dictionary_t *dc = EC_DC(handle);
 
     gstor_prepare(session, cursor, EC_LOBBUF(handle));
 
-    GS_RETURN_IFERR(gstor_open_cursor_internal(session, cursor, dc, CURSOR_ACTION_SELECT, IX_SYS_KV_01_ID));
+    status_t status = gstor_open_cursor_internal(session, cursor, dc, CURSOR_ACTION_SELECT, IX_SYS_KV_01_ID);
+    if (status != GS_SUCCESS) {
+        gstor_dec_ref();
+        return status;
+    }
 
-    GS_RETURN_IFERR(gstor_make_scan_key(session, cursor, key, key_len, flags));
+    status = gstor_make_scan_key(session, cursor, key, key_len, flags);
+    if (status != GS_SUCCESS) {
+        gstor_dec_ref();
+        return status;
+    }
 
-    GS_RETURN_IFERR(knl_fetch(session, cursor));
+    status = knl_fetch(session, cursor);
+    if (status != GS_SUCCESS) {
+        gstor_dec_ref();
+        return status;
+    }
 
     *eof = cursor->eof;
+    gstor_dec_ref();
     return GS_SUCCESS;
 }
 
 int gstor_cursor_next(void *handle, unsigned int *eof)
 {
-    GS_RETURN_IFERR(knl_fetch(EC_SESSION(handle), EC_CURSOR(handle)));
-    *eof = EC_CURSOR(handle)->eof;
-    return GS_SUCCESS;
+    if (!gstor_inc_ref()) {
+        return GS_ERROR;
+    }
+
+    int ret = knl_fetch(EC_SESSION(handle), EC_CURSOR(handle));
+    if (ret == GS_SUCCESS) {
+        *eof = EC_CURSOR(handle)->eof;
+    }
+    gstor_dec_ref();
+    return ret;
 }
 
 int gstor_cursor_fetch(void *handle, char **key, unsigned int *key_len, char **val, unsigned int *val_len)
 {
-    return gstor_get_table_row(handle, key, key_len, val, val_len);
+    if (!gstor_inc_ref()) {
+        return GS_ERROR;
+    }
+
+    int ret = gstor_get_table_row(handle, key, key_len, val, val_len);
+    gstor_dec_ref();
+    return ret;
 }
 
 int gstor_begin(void *handle)
@@ -1009,13 +1182,23 @@ int gstor_begin(void *handle)
 
 int gstor_commit(void *handle)
 {
+    if (!gstor_inc_ref()) {
+        return GS_ERROR;
+    }
+
     knl_commit(EC_SESSION(handle));
+    gstor_dec_ref();
     return GS_SUCCESS;
 }
 
 int gstor_rollback(void *handle)
 {
+    if (!gstor_inc_ref()) {
+        return GS_ERROR;
+    }
+
     knl_rollback(EC_SESSION(handle), NULL);
+    gstor_dec_ref();
     return GS_SUCCESS;
 }
 
