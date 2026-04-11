@@ -86,7 +86,7 @@
 #define DEFAULT_LSND_WAIT_TIME (uint32)3
 #define DEFAULT_DDL_LOCK_TIMEOUT (uint32)30
 
-#define FIX_NUM_DAYS_YEAR (uint32)365
+#define FIX_NUM_DAYS_YEAR (uint32)7300
 
 void knl_param_get_config_info(config_item_t **params, uint32 *count);
 status_t knl_param_get_size_uint64(config_t *config, char *param_name, uint64 *param_value);
