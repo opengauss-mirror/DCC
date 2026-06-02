@@ -65,6 +65,7 @@ const char *g_dcc_error_desc[DCC_ERROR_COUNT] = {
     [ERR_PARAM_COMMENT_TOO_LONG]      = "The parameter comment in config file is too long, len %d, content %s",
     [ERR_WAIT_DB_COMMIT_TIMEOUT]      = "Timeout when waiting for db commit",
     [ERR_DECODE_REQUEST]              = "The request packet is error",
+    [ERR_INSUFFICIENT_PRIV]           = "Insufficient privilege: SSL/authentication required before this command",
     /* storage errors */
     [ERR_STG_INIT_FAILED]             = "Failed to init storage",
 
