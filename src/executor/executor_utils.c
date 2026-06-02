@@ -27,6 +27,9 @@
 #include "util_error.h"
 #include "util_defs.h"
 #include "dcf_interface.h"
+#ifndef WIN32
+#include <sys/stat.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -192,6 +195,17 @@ status_t exc_remove_dir(const char *path)
 #ifndef WIN32
     struct dirent *dirp = NULL;
     char filepath[CM_FILE_NAME_BUFFER_SIZE] = {0};
+    struct stat stat_buf;
+
+    if (lstat(path, &stat_buf) != 0) {
+        return CM_ERROR;
+    }
+    if (S_ISLNK(stat_buf.st_mode)) {
+        return cm_remove_file(path);
+    }
+    if (!S_ISDIR(stat_buf.st_mode)) {
+        return CM_ERROR;
+    }
 
     DIR *dir = opendir(path);
     if (dir == NULL) {
@@ -209,7 +223,19 @@ status_t exc_remove_dir(const char *path)
             return CM_ERROR;
         }
 
-        if (cm_dir_exist(filepath)) {
+        if (lstat(filepath, &stat_buf) != 0) {
+            (void)closedir(dir);
+            return CM_ERROR;
+        }
+        if (S_ISLNK(stat_buf.st_mode)) {
+            if (cm_remove_file(filepath) == CM_SUCCESS) {
+                continue;
+            }
+            (void)closedir(dir);
+            return CM_ERROR;
+        }
+
+        if (S_ISDIR(stat_buf.st_mode)) {
             if (exc_remove_dir(filepath) == CM_SUCCESS) {
                 continue;
             }
