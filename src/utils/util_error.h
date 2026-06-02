@@ -72,8 +72,9 @@ typedef enum en_DCC_errno {
     ERR_PARAM_COMMENT_TOO_LONG    = 1104,
     ERR_WAIT_DB_COMMIT_TIMEOUT    = 1105,
     ERR_DECODE_REQUEST            = 1106,
+    ERR_INSUFFICIENT_PRIV         = 1107,
     // need update DCC_ERRNO_SRV_END after add new ERRNO
-    DCC_ERRNO_SRV_END             = ERR_DECODE_REQUEST + 1,
+    DCC_ERRNO_SRV_END             = ERR_INSUFFICIENT_PRIV + 1,
 
     /* storage errors */
     DCC_ERRNO_STG_BEGIN         = 1200,

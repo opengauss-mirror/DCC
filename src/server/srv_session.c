@@ -247,7 +247,7 @@ static status_t srv_sess_exec_watch(session_t *session)
     text_t key = {.str = req.key, .len = req.key_size};
     dcc_option_t option = { 0 };
     option.watch_op.is_prefix = req.is_dir;
-    option.sid = req.session_id;
+    option.sid = session->id;
     status_t ret = exc_watch(session->stg_handle, &key, srv_proc_watch_event, &option, &watch_key);
     if (ret != CM_SUCCESS) {
         util_convert_exc_errno();
@@ -260,7 +260,7 @@ static status_t srv_sess_exec_watch(session_t *session)
                 return CM_ERROR;
             }
             watch_record->is_prefix = option.watch_op.is_prefix;
-            watch_record->session_id = req.session_id;
+            watch_record->session_id = session->id;
             watch_record->key.len = watch_key.len;
             watch_record->key.str = watch_key.str;
             watch_record->prev = NULL;
@@ -494,6 +494,22 @@ static srv_cmd_proc_t g_srv_cmd_processor[] = {
     [DCC_CMD_CEIL]       = NULL,
 };
 
+/*
+ * Commands allowed before the connection has upgraded to SSL.
+ * Everything else (KV / watch / lease) must run over an authenticated SSL pipe.
+ */
+static inline bool32 srv_cmd_requires_ssl(uint32 cmd)
+{
+    switch (cmd) {
+        case DCC_CMD_SSL:
+        case DCC_CMD_LOOPBACK:
+        case DCC_CMD_DISCONNECT:
+            return CM_FALSE;
+        default:
+            return CM_TRUE;
+    }
+}
+
 static inline void srv_process_init_session(session_t *session)
 {
     cs_init_get(session->recv_pack);
@@ -532,6 +548,12 @@ status_t srv_process_command(session_t *session)
     if (cmd == DCC_CMD_UNKONOW || cmd >= DCC_CMD_CEIL) {
         LOG_DEBUG_ERR("[SESS] process recv msg command:%u invalid", cmd);
         return srv_send_rsp(session, ERR_INVALID_CMD_TYPE);
+    }
+
+    if (srv_cmd_requires_ssl(cmd) &&
+        (session->pipe == NULL || session->pipe->type != CS_TYPE_SSL)) {
+        LOG_DEBUG_ERR("[SESS] reject unauthenticated command:%u, sessId:%u", cmd, session->id);
+        return srv_send_rsp(session, ERR_INSUFFICIENT_PRIV);
     }
 
     srv_cmd_proc_t cmd_proc_func = g_srv_cmd_processor[cmd];
