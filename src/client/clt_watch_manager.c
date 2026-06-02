@@ -178,6 +178,9 @@ static void clt_watch_inter_del(clt_watch_list_t *watch_list, const text_t *key)
     clt_watch_node_t *item = clt_watch_list_find(watch_list, key);
     if (item != NULL) {
         CLT_HASH_LIST_REMOVE(watch_list, item);
+        if (watch_list->node_cnt > 0) {
+            watch_list->node_cnt--;
+        }
     }
     cm_spin_unlock(&watch_list->lock);
     CM_FREE_PTR(item);
@@ -196,34 +199,51 @@ void clt_watch_pool_del(clt_watch_manager_t *watch_manager, bool32 is_prefix, co
 status_t clt_watch_pool_call(clt_watch_manager_t *watch_manager, const text_t *key, uint32 is_prefix,
     const dcc_watch_result_t *result)
 {
-    uint32 cnt = 0;
-    clt_watch_node_t *cur;
+    uint32 proc_cnt = 0;
     clt_watch_list_t *watch_list;
     if (is_prefix == CM_TRUE) {
         watch_list = watch_manager->watch_group_list;
-        cur = watch_list->first;
-        cm_spin_lock(&watch_list->lock, NULL);
-        while (cur != NULL) {
-            if (iv_byte_cmp(key, &cur->clt_watch_iv.begin) >= 0 && iv_byte_cmp(key, &cur->clt_watch_iv.end) < 0) {
-                cnt++;
-                cur->proc(key->str, key->len, result);
-            }
-            cur = cur->next;
-        }
-        LOG_DEBUG_INF("[CLI]trigger prefix watch proc cnt: %u", cnt);
     } else {
         watch_list = watch_manager->watch_key_list;
-        cur = watch_list->first;
-        cm_spin_lock(&watch_list->lock, NULL);
-        while (cur != NULL) {
-            if (iv_byte_cmp(key, &cur->clt_watch_iv.begin) == 0) {
-                cur->proc(key->str, key->len, result);
+    }
+
+    cm_spin_lock(&watch_list->lock, NULL);
+    uint32 max_proc_cnt = watch_list->node_cnt;
+    if (max_proc_cnt == 0) {
+        cm_spin_unlock(&watch_list->lock);
+        LOG_DEBUG_INF("[CLI]trigger watch proc cnt: %u, prefix: %u", proc_cnt, is_prefix);
+        return CM_SUCCESS;
+    }
+
+    dcc_watch_proc_t *procs = (dcc_watch_proc_t *)malloc(sizeof(dcc_watch_proc_t) * max_proc_cnt);
+    if (procs == NULL) {
+        LOG_DEBUG_ERR("[CLI]alloc watch proc list failed, cnt: %u", max_proc_cnt);
+        cm_spin_unlock(&watch_list->lock);
+        return CM_ERROR;
+    }
+
+    clt_watch_node_t *cur = watch_list->first;
+    while (cur != NULL) {
+        if (is_prefix == CM_TRUE) {
+            if (iv_byte_cmp(key, &cur->clt_watch_iv.begin) >= 0 &&
+                iv_byte_cmp(key, &cur->clt_watch_iv.end) < 0) {
+                procs[proc_cnt++] = cur->proc;
             }
-            cur = cur->next;
+        } else {
+            if (iv_byte_cmp(key, &cur->clt_watch_iv.begin) == 0) {
+                procs[proc_cnt++] = cur->proc;
+            }
         }
-        LOG_DEBUG_INF("[CLI]trigger watch proc cnt: %u", cnt);
+        cur = cur->next;
     }
     cm_spin_unlock(&watch_list->lock);
+
+    LOG_DEBUG_INF("[CLI]trigger watch proc cnt: %u, prefix: %u", proc_cnt, is_prefix);
+
+    for (uint32 i = 0; i < proc_cnt; i++) {
+        procs[i](key->str, key->len, result);
+    }
+    CM_FREE_PTR(procs);
     return CM_SUCCESS;
 }
 
