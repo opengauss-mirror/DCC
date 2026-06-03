@@ -211,6 +211,8 @@ status_t exc_read_handle4table(void *handle, const char *table_name);
 
 status_t exc_put(void* handle, const text_t* buf, unsigned long long write_key, unsigned long long* index);
 
+status_t exc_validate_request_info(const text_t *buf);
+
 status_t exc_get(void* handle, text_t *key, text_t *val, uint32 read_level, bool32 *eof);
 
 status_t exc_open_cursor(void* handle, text_t *key, uint32 read_level, bool32 *eof);
