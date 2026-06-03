@@ -722,9 +722,7 @@ void exc_lease_demote(void)
 
 static status_t exc_proposal(void *handle, const text_t *buf, unsigned long long write_key, unsigned long long *index)
 {
-    if (buf->str == NULL || buf->len == 0) {
-        return CM_ERROR;
-    }
+    CM_RETURN_IFERR(exc_validate_request_info(buf));
 
     if (dcf_universal_write(EXC_STREAM_ID_DEFAULT, buf->str, buf->len, write_key, index) != CM_SUCCESS) {
         return CM_ERROR;

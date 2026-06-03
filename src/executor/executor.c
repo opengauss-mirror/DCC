@@ -279,8 +279,13 @@ static status_t exc_get_text(const char* buff, uint32 size, text_t *text, uint32
         text->str = NULL;
         return CM_SUCCESS;
     }
+    uint32 text_size = CM_ALIGN4(text->len);
+    if (text_size < text->len || text_size > size - *offset) {
+        LOG_RUN_ERR("[EXC] The length is over with remain size for parsing buff.");
+        return CM_ERROR;
+    }
     text->str = (char *)(buff + *offset);
-    *offset += CM_ALIGN4(text->len);
+    *offset += text_size;
     return CM_SUCCESS;
 }
 
@@ -310,6 +315,20 @@ static status_t exc_parse_request_info(const char* buf, uint32 size, msg_entry_t
         CM_RETURN_IFERR(exc_get_uint64(buf, size, (uint64 *)&entry->all_op.lease_op.renew_time, &offset));
     }
 
+    return CM_SUCCESS;
+}
+
+status_t exc_validate_request_info(const text_t *buf)
+{
+    if (buf->str == NULL || buf->len == 0) {
+        return CM_ERROR;
+    }
+
+    msg_entry_t entry = {0};
+    if (exc_parse_request_info(buf->str, buf->len, &entry) != CM_SUCCESS) {
+        CM_THROW_ERROR(ERR_INVALID_CMD_CONTENT, "command content is error");
+        return CM_ERROR;
+    }
     return CM_SUCCESS;
 }
 
@@ -507,7 +526,11 @@ int exc_cb_consensus_follow_notify(unsigned int stream_id, unsigned long long in
         return CM_ERROR;
     }
 
-    CM_RETURN_IFERR(exc_parse_request_info(entry->buf, total_size, entry));
+    status_t ret = exc_parse_request_info(entry->buf, total_size, entry);
+    if (ret != CM_SUCCESS) {
+        exc_entry_dec_ref(entry);
+        return ret;
+    }
     exc_append_db_task(entry);
 
     if ((entry->cmd == DCC_CMD_DELETE) ||
@@ -1933,9 +1956,7 @@ status_t exc_read_handle4table(void *handle, const char *table_name)
 
 status_t exc_put(void* handle, const text_t* buf, unsigned long long write_key, unsigned long long* index)
 {
-    if (buf->str == NULL || buf->len == 0) {
-        return CM_ERROR;
-    }
+    CM_RETURN_IFERR(exc_validate_request_info(buf));
 
     if (dcf_universal_write(EXC_STREAM_ID_DEFAULT, buf->str, buf->len, write_key, index) != CM_SUCCESS) {
         CM_THROW_ERROR(ERR_EXC_PUT_FAILED, "");
@@ -1980,9 +2001,7 @@ status_t exc_cursor_fetch(void* handle, text_t* result_key, text_t* result_value
 
 status_t exc_del(void* handle, const text_t* buf, unsigned long long write_key, unsigned long long* index)
 {
-    if (buf->str == NULL || buf->len == 0) {
-        return CM_ERROR;
-    }
+    CM_RETURN_IFERR(exc_validate_request_info(buf));
 
     if (dcf_universal_write(EXC_STREAM_ID_DEFAULT, buf->str, buf->len, write_key, index) != CM_SUCCESS) {
         CM_THROW_ERROR(ERR_EXC_DEL_FAILED, "");
