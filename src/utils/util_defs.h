@@ -54,6 +54,10 @@ extern "C" {
 
 #define SRV_MAX_KEY_SIZE                (4 * 1024)              // 4KB
 #define SRV_MAX_VAL_SIZE                (10 * 1024 * 1024)      // 10M
+// gstor builds the prefix/sequence scan key in a GS_MAX_KEY_LEN(=4000) buffer; a prefix
+// delete whose key reaches that bound makes gstor_make_scan_key() fail deterministically,
+// which the apply path amplifies into exit(0). Reject such keys at every write entry.
+#define SRV_MAX_PREFIX_KEY_SIZE         (4000)
 
 typedef enum dcc_stat_item_id_en {
     DCC_PUT = 0,

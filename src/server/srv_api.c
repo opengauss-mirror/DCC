@@ -600,6 +600,10 @@ int srv_dcc_delete(const void *handle, const dcc_text_t *key, const dcc_option_t
     CHECK_SRV_STATUS(DCC_SRV_RUNNING);
     CM_RETURN_IFERR(srv_check_handle_key(handle, key));
     CM_CHECK_NULL_PTR(option);
+    if (option->del_op.is_prefix && key->len >= SRV_MAX_PREFIX_KEY_SIZE) {
+        CM_THROW_ERROR(ERR_INVALID_PARAMETER_VALUE, "");
+        return CM_ERROR;
+    }
     CM_RETURN_IFERR(srv_check_and_block());
     int64 now = g_timer()->now;
 
@@ -630,6 +634,7 @@ int srv_dcc_watch(const void *handle, dcc_text_t *key, dcc_watch_proc_t proc, dc
     cm_reset_error();
     CHECK_SRV_STATUS(DCC_SRV_RUNNING);
     CM_RETURN_IFERR(srv_check_handle_key(handle, key));
+    CM_CHECK_NULL_PTR(key->value);
     CM_CHECK_NULL_PTR(proc);
     CM_CHECK_NULL_PTR(option);
     int64 now = g_timer()->now;
