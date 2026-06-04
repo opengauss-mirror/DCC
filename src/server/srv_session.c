@@ -221,9 +221,36 @@ static status_t srv_sess_exec_children(session_t *session)
     return srv_send_query_rsp(session, session->qry_eof == 0 ? CM_FALSE : CM_TRUE, fetch_nums, ret);
 }
 
+static inline status_t srv_check_delete_request(const cs_packet_t *recv_pack)
+{
+    CM_CHECK_NULL_PTR(recv_pack);
+
+    cs_packet_t packet = *recv_pack;
+    uint32 cmd = 0;
+    uint32 is_prefix = 0;
+    uint32 key_size = 0;
+
+    packet.offset = sizeof(cs_packet_head_t);
+    CM_RETURN_IFERR(cs_get_int32(&packet, (int32 *)&cmd));
+    if (cmd != DCC_CMD_DELETE) {
+        CM_THROW_ERROR(ERR_INVALID_PARAMETER_VALUE, "");
+        return CM_ERROR;
+    }
+    CM_RETURN_IFERR(cs_get_int32(&packet, (int32 *)&is_prefix));
+    CM_RETURN_IFERR(cs_get_int32(&packet, (int32 *)&key_size));
+    if (is_prefix != 0 && key_size >= SRV_MAX_PREFIX_KEY_SIZE) {
+        CM_THROW_ERROR(ERR_INVALID_PARAMETER_VALUE, "");
+        return CM_ERROR;
+    }
+    return CM_SUCCESS;
+}
+
 static status_t srv_sess_exec_delete(session_t *session)
 {
     cs_packet_t *recv_pack = session->recv_pack;
+    if (srv_check_delete_request(recv_pack) != CM_SUCCESS) {
+        return srv_send_rsp(session, cm_get_error_code());
+    }
     text_t data_buf = {
         .len = recv_pack->head->size - sizeof(cs_packet_head_t),
         .str = recv_pack->buf + sizeof(cs_packet_head_t) };

@@ -37,6 +37,10 @@ extern "C" {
 
 #define MAX_KEY_SIZE                (4 * 1024)              // 4KB
 #define MAX_VAL_SIZE                (10 * 1024 * 1024)      // 10M
+// A prefix delete whose key reaches the storage prefix-scan-key bound (4000) fails
+// deterministically on the server; reject it client-side too so a legitimate client
+// never builds a request that would terminate the server's apply path.
+#define MAX_PREFIX_KEY_SIZE         (4000)
 
 #define MAX_LEASE_NAME_SIZE         32
 
