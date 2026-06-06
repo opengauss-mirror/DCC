@@ -115,7 +115,7 @@ static inline status_t srv_check_handle_key(const void *handle, const dcc_text_t
 {
     CM_CHECK_NULL_PTR(handle);
     CM_CHECK_NULL_PTR(key);
-    if (key->len > SRV_MAX_KEY_SIZE) {
+    if (key->value == NULL || key->len == 0 || key->len > SRV_MAX_KEY_SIZE) {
         CM_THROW_ERROR(ERR_INVALID_PARAMETER_VALUE, "");
         return CM_ERROR;
     }
