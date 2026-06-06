@@ -686,6 +686,7 @@ status_t clt_parse_children(clt_handle_t *handle, dcc_array_t *result)
     uint32 eof = CM_TRUE;
     cs_packet_t *packet = NULL;
     result->count = 0;
+    result->strings = NULL;
     clt_get_rcv_pack(&packet, handle->channel[SYNC_CHANNEL_IDX]);
     CM_RETURN_IFERR(cs_get_int32(packet, (int32 *) &eof));
     CM_RETURN_IFERR(cs_get_int32(packet, (int32 *) &cnt));
