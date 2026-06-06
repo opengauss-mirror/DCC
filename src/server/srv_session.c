@@ -441,6 +441,7 @@ static void srv_unwatch_by_sess_id(session_t *session)
     }
     dcc_option_t option = {0};
     sess_watch_record_t *cur = session->watch_head;
+    sess_watch_record_t *next = NULL;
     while (cur != NULL) {
         option.sid = cur->session_id;
         option.watch_op.is_prefix = cur->is_prefix;
@@ -448,8 +449,9 @@ static void srv_unwatch_by_sess_id(session_t *session)
         if (ret != CM_SUCCESS) {
             LOG_RUN_ERR("[SESS]unwatch key %.*s failed", cur->key.len, cur->key.str);
         }
+        next = cur->next;
         exc_free(cur);
-        cur = cur->next;
+        cur = next;
     }
     session->watch_head = NULL;
 }
