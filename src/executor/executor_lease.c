@@ -371,12 +371,21 @@ status_t exc_cb_consensus_lease_renew(const text_t *leasename)
     if (!exc_is_leader()) {
         return CM_SUCCESS;
     }
+    if (item->expire_ele == NULL) {
+        LOG_DEBUG_ERR("[EXC LEASE] item->expire_ele is NULL");
+        return CM_ERROR;
+    }
     item->expire_ele->expire_time = exc_lease_expire_time(item->renew_time, item->ttl);
     cm_spin_lock(&g_lease_mgr->lock, NULL);
-    status_t ret = exc_pque_adjust(&g_lease_mgr->pque, item->expire_ele->idx);
+    status_t ret;
+    if (item->expire_ele->idx == 0) {
+        ret = exc_pque_insert(&g_lease_mgr->pque, item->expire_ele);
+    } else {
+        ret = exc_pque_adjust(&g_lease_mgr->pque, item->expire_ele->idx);
+    }
     cm_spin_unlock(&g_lease_mgr->lock);
     if (ret != CM_SUCCESS) {
-        LOG_DEBUG_ERR("[EXC LEASE] pque adjust failed when lease renew, name:%s", item->name);
+        LOG_DEBUG_ERR("[EXC LEASE] pque renew failed, name:%s", item->name);
         return CM_ERROR;
     }
     return CM_SUCCESS;
@@ -426,16 +435,21 @@ status_t exc_cb_consensus_lease_destroy(const text_t *leasename)
         LOG_DEBUG_ERR("[EXC LEASE] exc_write_lease_to_db failed when consensus lease destroy");
         return CM_ERROR;
     }
-
     if (exc_is_leader()) {
         // remove lease from expireque
-        cm_spin_lock(&g_lease_mgr->lock, NULL);
-        status_t ret = exc_pque_delete(&g_lease_mgr->pque, item->expire_ele->idx);
-        cm_spin_unlock(&g_lease_mgr->lock);
-        if (ret != CM_SUCCESS) {
-            LOG_DEBUG_ERR("[EXC LEASE] pque delete expire item failed, name:%s", item->name);
-            return CM_ERROR;
+        if (item->expire_ele != NULL && item->expire_ele->idx != 0) {
+            cm_spin_lock(&g_lease_mgr->lock, NULL);
+            status_t ret = exc_pque_delete(&g_lease_mgr->pque, item->expire_ele->idx);
+            cm_spin_unlock(&g_lease_mgr->lock);
+            if (ret != CM_SUCCESS) {
+                LOG_DEBUG_ERR("[EXC LEASE] pque delete expire item failed, name:%s", item->name);
+                return CM_ERROR;
+            }
         }
+    }
+    if (item->expire_ele != NULL) {
+        exc_free(item->expire_ele);
+        item->expire_ele = NULL;
     }
 
     // remove and free lease item

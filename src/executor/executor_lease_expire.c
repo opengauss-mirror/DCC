@@ -172,11 +172,13 @@ status_t exc_pque_delete(lease_expire_pque_t *pque, uint32 idx)
     lease_expire_ele_t *ele = pque->eles[idx];
     LOG_DEBUG_INF("[EXC LEASE] pque delete with lease name:%s expire_time:%llu", ele->name, ele->expire_time);
     if (idx == last_idx) {
+        ele->idx = 0;
         pque->size--;
         return CM_SUCCESS;
     }
     exc_pque_exch(pque, idx, last_idx);
     pque->size--;
+    ele->idx = 0;
     return exc_pque_adjust(pque, idx);
 }
 
@@ -212,6 +214,7 @@ status_t exc_pque_delete_min(lease_expire_pque_t *pque, lease_expire_ele_t **min
     pque->size--;
     if (pque->size == 0) {
         LOG_DEBUG_INF("[EXC LEASE] pque deleted last ele, name:%s expire_time:%llu", (*min)->name, (*min)->expire_time);
+        (*min)->idx = 0;
         pque->eles[EXC_PQUE_MIN_ELE_IDX] = NULL;
         return CM_SUCCESS;
     }
@@ -230,6 +233,7 @@ status_t exc_pque_delete_min(lease_expire_pque_t *pque, lease_expire_ele_t **min
     pque->eles[i] = last;
     pque->eles[i]->idx = i;
     if (*min != NULL) {
+        (*min)->idx = 0;
         LOG_DEBUG_INF("[EXC LEASE] pque deleted min ele, name:%s expire_time:%llu", (*min)->name, (*min)->expire_time);
     }
     return CM_SUCCESS;
@@ -269,7 +273,6 @@ void exc_proc_lease_expire(lease_expire_pque_t *pque, spinlock_t *lock)
         if (ret != CM_SUCCESS) {
             return;
         }
-        exc_free(min);
         min = NULL;
         cm_spin_lock(lock, NULL);
         exc_pque_get_min(pque, &min);
