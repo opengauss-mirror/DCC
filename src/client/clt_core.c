@@ -272,6 +272,7 @@ static status_t clt_parse_url(clt_handle_t *handle, char *server_list)
             CM_THROW_ERROR(DCC_CLI_NO_MEMORY_ERR, "");
             return CM_ERROR;
         }
+        handle->server_cnt = server_cnt + 1;
         MEMS_RETURN_IFERR(memcpy_sp(handle->server_texts[server_cnt], l_text.len, l_text.str, l_text.len));
         handle->server_texts[server_cnt][l_text.len] = URL_END_CHAR;
 
@@ -279,7 +280,6 @@ static status_t clt_parse_url(clt_handle_t *handle, char *server_list)
         LOG_DEBUG_INF("[CLI]the endpoint%u is: %s", server_cnt, handle->server_texts[server_cnt]);
         server_cnt++;
     }
-    handle->server_cnt = server_cnt;
     return CM_SUCCESS;
 }
 
