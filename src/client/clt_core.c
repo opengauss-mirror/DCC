@@ -401,12 +401,13 @@ static status_t clt_watch_proc(cs_packet_t *packet, void *handle)
     text_t key;
     status_t ret;
     clt_handle_t *hd = (clt_handle_t *) handle;
-    watch_res_t watch_res;
+    watch_res_t watch_res = {0};
     ret = decode_watch_res(packet, &watch_res);
     if (ret != CM_SUCCESS) {
         LOG_RUN_ERR("[CLI]decode watch res failed");
+        return ret;
     }
-    dcc_watch_result_t watch_result;
+    dcc_watch_result_t watch_result = {0};
     convert_watch_response(&watch_res, &watch_result);
     uint32 is_prefix = watch_res.is_dir;
     cm_str2text_safe(watch_res.key, watch_res.key_size, &key);
