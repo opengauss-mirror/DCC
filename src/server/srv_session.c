@@ -607,10 +607,6 @@ static status_t srv_new_session(const cs_pipe_t *pipe, session_t **session)
 {
     session_pool_t *pool = &g_srv_inst->session_pool;
 
-    if (is_srv_session_over_max_limit(pool)) {
-        return CM_ERROR;
-    }
-
     session_t *sess = (session_t *)malloc(sizeof(session_t));
     if (sess == NULL) {
         return CM_ERROR;
@@ -623,6 +619,11 @@ static status_t srv_new_session(const cs_pipe_t *pipe, session_t **session)
     srv_set_session_pipe(sess, pipe);
 
     cm_spin_lock(&pool->lock, NULL);
+    if (is_srv_session_over_max_limit(pool) || pool->hwm >= CM_MAX_SESSIONS) {
+        cm_spin_unlock(&pool->lock);
+        CM_FREE_PTR(sess);
+        return CM_ERROR;
+    }
     sess->id = pool->hwm;
     pool->sessions[sess->id] = sess;
     pool->hwm++;
