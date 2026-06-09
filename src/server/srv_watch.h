@@ -39,6 +39,8 @@ extern "C" {
 #endif
 
 #define DCC_MAX_SESS_WATCH_QUE_NUM 16
+#define DCC_MAX_SESS_WATCH_QUE_DEPTH 256
+#define DCC_MAX_SESS_WATCH_TOTAL_CNT 1024
 
 typedef struct st_watch_msg_node {
     uint32 sid;
