@@ -507,7 +507,11 @@ int exc_cb_consensus_follow_notify(unsigned int stream_id, unsigned long long in
         return CM_ERROR;
     }
 
-    CM_RETURN_IFERR(exc_parse_request_info(entry->buf, total_size, entry));
+    status_t ret = exc_parse_request_info(entry->buf, total_size, entry);
+    if (ret != CM_SUCCESS) {
+        exc_entry_dec_ref(entry);
+        return ret;
+    }
     exc_append_db_task(entry);
 
     if ((entry->cmd == DCC_CMD_DELETE) ||
