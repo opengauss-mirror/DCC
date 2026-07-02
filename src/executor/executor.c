@@ -53,7 +53,7 @@ static volatile bool32 g_truncate_stopped = CM_FALSE;
 
 #define DCC_SEQUENCE_START          "0000000000"
 
-static void exc_dealing_put(msg_entry_t* entry);
+static bool32 exc_dealing_put(msg_entry_t* entry);
 
 /* inner API */
 bool8 exc_is_leader(void)
@@ -1564,10 +1564,11 @@ void exc_dealing_del(msg_entry_t* entry)
     exc_wr_handle_delete(DCC_SEQUENCE_TABLE_ID, (text_t *) ENTRY_K(entry), entry->all_op.del_op.is_prefix, &count);
 }
 
-static void exc_dealing_put(msg_entry_t* entry)
+static bool32 exc_dealing_put(msg_entry_t* entry)
 {
     exc_wr_handle_put(DCC_KV_TABLE_ID, (text_t *) ENTRY_K(entry), (text_t *) ENTRY_V(entry));
     exc_watch_notify(entry, DCC_WATCH_EVENT_PUT);
+    return CM_TRUE;
 }
 
 static void exc_dealing_lease(const msg_entry_t* entry)
@@ -1610,40 +1611,40 @@ static inline bool32 expect_value_exists(text_t* key, const text_t* expect_val)
     return CM_TRUE;
 }
 
-static inline void exc_dealing_cas(msg_entry_t* entry)
+static inline bool32 exc_dealing_cas(msg_entry_t* entry)
 {
     if (!expect_value_exists((text_t*)ENTRY_K(entry), &entry->all_op.put_op.expect_value)) {
         call_srv_callback(entry, CM_FALSE);
-        return;
+        return CM_FALSE;
     }
 
     call_srv_callback(entry, CM_TRUE);
-    exc_dealing_put(entry);
+    return exc_dealing_put(entry);
 }
 
-static void exc_dealing_sequence(msg_entry_t *entry)
+static bool32 exc_dealing_sequence(msg_entry_t *entry)
 {
     status_t ret = exc_write_sequence(entry);
     if (ret != CM_SUCCESS) {
         call_srv_callback(entry, CM_FALSE);
-        return;
+        return CM_FALSE;
     }
     call_srv_callback(entry, CM_TRUE);
-    exc_dealing_put(entry);
+    return exc_dealing_put(entry);
 }
 
-static inline void exc_dealing_create(msg_entry_t *entry)
+static inline bool32 exc_dealing_create(msg_entry_t *entry)
 {
     bool32 existed = CM_FALSE;
 
     status_t ret = key_existed((text_t *) ENTRY_K(entry), &existed);
     if (ret != CM_SUCCESS || existed) {
         call_srv_callback(entry, CM_FALSE);
-        return;
+        return CM_FALSE;
     }
     call_srv_callback(entry, CM_TRUE);
 
-    exc_dealing_put(entry);
+    return exc_dealing_put(entry);
 }
 
 static status_t exc_dealing_put_attach_lease(const msg_entry_t* entry)
@@ -1682,18 +1683,19 @@ static status_t exc_dealing_put_attach_lease(const msg_entry_t* entry)
 static void exc_dealing_single_entry(msg_entry_t* entry)
 {
     if (entry->cmd == DCC_CMD_PUT) {
+        bool32 put_succeeded = CM_FALSE;
         if (!CM_IS_EMPTY(&entry->all_op.put_op.expect_value)) {
-            exc_dealing_cas(entry);
+            put_succeeded = exc_dealing_cas(entry);
         } else {
             if (entry->all_op.put_op.not_existed) {
-                exc_dealing_create(entry);
+                put_succeeded = exc_dealing_create(entry);
             } else if (entry->all_op.put_op.sequence) {
-                exc_dealing_sequence(entry);
+                put_succeeded = exc_dealing_sequence(entry);
             } else {
-                exc_dealing_put(entry);
+                put_succeeded = exc_dealing_put(entry);
             }
         }
-        if (!CM_IS_EMPTY(&entry->all_op.put_op.leaseid)) {
+        if (put_succeeded && !CM_IS_EMPTY(&entry->all_op.put_op.leaseid)) {
             if (exc_dealing_put_attach_lease(entry) != CM_SUCCESS) {
                 LOG_DEBUG_ERR("[EXC] dealing put attach lease failed.");
             }
