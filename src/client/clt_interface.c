@@ -266,6 +266,10 @@ int dcc_delete(void *handle, const dcc_string_t *key, const dcc_option_t *option
 
     cm_reset_error();
     CM_RETURN_IFERR(clt_check_arguments(hd, key, option));
+    if (option->delete_op.prefix != 0 && key->len >= MAX_PREFIX_KEY_SIZE) {
+        CM_THROW_ERROR(DCC_CLI_BAD_ARGUMENTS, "");
+        return CM_ERROR;
+    }
     convert_del_request(key, option, &request);
 
     cm_spin_lock(&hd->latch, NULL);
