@@ -293,19 +293,22 @@ static status_t srv_sess_exec_unwatch(session_t *session)
     }
     text_t key = { .str = req.key, .len = req.key_size };
     dcc_option_t option = { 0 };
-    option.watch_op.is_prefix = req.is_dir;
-    option.sid = req.session_id;
     sess_watch_record_t *cur = session->watch_head;
     sess_watch_record_t *to_deleted = NULL;
     while (cur != NULL) {
-        if (cm_text_equal(&cur->key, &key) && cur->is_prefix == req.is_dir) {
+        if (cm_text_equal(&cur->key, &key) && cur->is_prefix == req.is_dir && cur->session_id == req.session_id) {
             to_deleted = cur;
             break;
         }
         cur = cur->next;
     }
+    if (to_deleted == NULL) {
+        return srv_send_rsp(session, ERR_INVALID_CMD_CONTENT);
+    }
+    option.watch_op.is_prefix = to_deleted->is_prefix;
+    option.sid = to_deleted->session_id;
     status_t ret = exc_unwatch(session->stg_handle, &key, &option);
-    if (ret == CM_SUCCESS && to_deleted != NULL) {
+    if (ret == CM_SUCCESS) {
         srv_delete_record(&session->watch_head, to_deleted);
         exc_free(to_deleted);
         return srv_send_rsp(session, CM_SUCCESS);
