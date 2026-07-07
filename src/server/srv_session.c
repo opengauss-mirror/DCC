@@ -270,11 +270,14 @@ static status_t srv_sess_exec_watch(session_t *session)
     if (decode_watch_request(recv_pack, &req) != CM_SUCCESS) {
         return srv_send_rsp(session, ERR_DECODE_REQUEST);
     }
+    if (req.session_id != session->id) {
+        return srv_send_rsp(session, ERR_INVALID_CMD_CONTENT);
+    }
     text_t watch_key = {0};
     text_t key = {.str = req.key, .len = req.key_size};
     dcc_option_t option = { 0 };
     option.watch_op.is_prefix = req.is_dir;
-    option.sid = req.session_id;
+    option.sid = session->id;
     status_t ret = exc_watch(session->stg_handle, &key, srv_proc_watch_event, &option, &watch_key);
     if (ret != CM_SUCCESS) {
         util_convert_exc_errno();
@@ -287,7 +290,7 @@ static status_t srv_sess_exec_watch(session_t *session)
                 return CM_ERROR;
             }
             watch_record->is_prefix = option.watch_op.is_prefix;
-            watch_record->session_id = req.session_id;
+            watch_record->session_id = session->id;
             watch_record->key.len = watch_key.len;
             watch_record->key.str = watch_key.str;
             watch_record->prev = NULL;
@@ -322,12 +325,15 @@ static status_t srv_sess_exec_unwatch(session_t *session)
     if (decode_watch_request(recv_pack, &req) != CM_SUCCESS) {
         return srv_send_rsp(session, ERR_DECODE_REQUEST);
     }
+    if (req.session_id != session->id) {
+        return srv_send_rsp(session, ERR_INVALID_CMD_CONTENT);
+    }
     text_t key = { .str = req.key, .len = req.key_size };
     dcc_option_t option = { 0 };
     sess_watch_record_t *cur = session->watch_head;
     sess_watch_record_t *to_deleted = NULL;
     while (cur != NULL) {
-        if (cm_text_equal(&cur->key, &key) && cur->is_prefix == req.is_dir && cur->session_id == req.session_id) {
+        if (cm_text_equal(&cur->key, &key) && cur->is_prefix == req.is_dir && cur->session_id == session->id) {
             to_deleted = cur;
             break;
         }
@@ -337,7 +343,7 @@ static status_t srv_sess_exec_unwatch(session_t *session)
         return srv_send_rsp(session, ERR_INVALID_CMD_CONTENT);
     }
     option.watch_op.is_prefix = to_deleted->is_prefix;
-    option.sid = to_deleted->session_id;
+    option.sid = session->id;
     status_t ret = exc_unwatch(session->stg_handle, &key, &option);
     if (ret == CM_SUCCESS) {
         srv_delete_record(&session->watch_head, to_deleted);
