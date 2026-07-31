@@ -657,7 +657,6 @@ status_t raft_db_init_module(knl_session_t *session, uint64 *last_committed_lfn)
         }
     }
 
-    GS_LOG_RUN_INF("RAFT: set raft token verify : %s", attr->raft_token_verify);
     if (attr->raft_token_verify[0] != '\0') {
         status = raft_lib_set_param(&raft_ctx->raft_proc, (char *)"RAFT_TOKEN_VERIFY", (void *)attr->raft_token_verify);
         if (status != GS_SUCCESS) {
