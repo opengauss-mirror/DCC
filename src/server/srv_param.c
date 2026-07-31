@@ -1036,14 +1036,18 @@ status_t verify_param_enum(dcc_param_t param_id, const char *param_value, param_
 static inline status_t dcf_set_param_wrap(const char *param, const char *value)
 {
     int ret = dcf_set_param(param, value);
+
+    const char *safe_value = value;
+    if (cm_str_equal(param, "SSL_PWD_PLAINTEXT") ||
+        cm_str_equal(param, "SSL_PWD_CIPHERTEXT")) {
+            safe_value = "***";
+    }
     if (ret != CM_SUCCESS) {
-        LOG_RUN_ERR("[PARAM] set dcf param %s to value %s failed", param, value);
-    }
-    if (cm_str_equal(param, "SSL_PWD_PLAINTEXT")) {
-        LOG_RUN_INF("[PARAM] set dcf param %s value %s success", param, "***");
+        LOG_RUN_ERR("[PARAM] set dcf param %s to value %s failed", param, safe_value);
     } else {
-        LOG_RUN_INF("[PARAM] set dcf param %s value %s success", param, value);
+        LOG_RUN_INF("[PARAM] set dcf param %s value %s success", param, safe_value);
     }
+
     return (ret == CM_SUCCESS) ? CM_SUCCESS : CM_ERROR;
 }
 
