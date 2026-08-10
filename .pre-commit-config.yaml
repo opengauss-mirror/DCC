@@ -1,0 +1,96 @@
+# pre-commit configuration for DCC.
+#
+# This repository is mainly C/C++ with CMake and shell scripts. To avoid
+# reformatting legacy files wholesale, clang-format is applied only to changed
+# diff hunks through clang-format-diff.py.
+#
+# pre-commit-hooks are installed as local hooks via pip (PyPI mirror),
+# codespell is fetched from the gitcode mirror.
+# This avoids the broken gitcode pre-commit-hooks mirror manifest.
+
+default_language_version:
+  python: python3
+
+exclude: '^\.pre-commit-venv/'
+
+repos:
+  # pre-commit-hooks installed via pip (PyPI mirror) instead of git clone,
+  # because the gitcode mirror has a broken .pre-commit-hooks.yaml manifest
+  # (check-added-large-files declares stages: [pre-commit], which is invalid).
+  - repo: local
+    hooks:
+      - id: trailing-whitespace
+        name: trim trailing whitespace
+        entry: trailing-whitespace-fixer
+        language: python
+        additional_dependencies: ["pre-commit-hooks==v4.4.0"]
+        types: [text]
+        args: ["--markdown-linebreak-ext=md"]
+
+      - id: end-of-file-fixer
+        name: fix end of files
+        entry: end-of-file-fixer
+        language: python
+        additional_dependencies: ["pre-commit-hooks==v4.4.0"]
+        types: [text]
+
+      - id: mixed-line-ending
+        name: fix mixed line endings
+        entry: mixed-line-ending
+        language: python
+        additional_dependencies: ["pre-commit-hooks==v4.4.0"]
+        types: [text]
+        args: ["--fix=lf"]
+
+      - id: check-yaml
+        name: check yaml
+        entry: check-yaml
+        language: python
+        additional_dependencies: ["pre-commit-hooks==v4.4.0"]
+        types: [yaml]
+
+      - id: check-json
+        name: check json
+        entry: check-json
+        language: python
+        additional_dependencies: ["pre-commit-hooks==v4.4.0"]
+        types: [json]
+
+      - id: check-toml
+        name: check toml
+        entry: check-toml
+        language: python
+        additional_dependencies: ["pre-commit-hooks==v4.4.0"]
+        types: [toml]
+
+      - id: check-merge-conflict
+        name: check for merge conflicts
+        entry: check-merge-conflict
+        language: python
+        additional_dependencies: ["pre-commit-hooks==v4.4.0"]
+
+      - id: detect-private-key
+        name: detect private key
+        entry: detect-private-key
+        language: python
+        additional_dependencies: ["pre-commit-hooks==v4.4.0"]
+
+      - id: clang-format-diff
+        name: clang-format (staged C/C++ diff)
+        entry: bash -c 'if git diff --cached --quiet -- "$@"; then git diff -U0 --no-color -- "$@" | clang-format-diff.py -p1 -i; else git diff --cached -U0 --no-color -- "$@" | clang-format-diff.py -p1 -i; fi' --
+        language: python
+        additional_dependencies: ["clang-format==22.1.5"]
+        files: '\.(c|h|cc|cpp|cxx|hh|hpp)$'
+        require_serial: true
+
+  - repo: local
+    hooks:
+      - id: codespell
+        name: check spelling (codespell)
+        entry: codespell
+        language: python
+        additional_dependencies: ["codespell==2.2.5"]
+        files: '(^|/)(CMakeLists\.txt|.*\.(md|txt|sh|cmake|ini|in|ya?ml|json|toml))$'
+        exclude: '^License$'
+        args:
+          - "--ignore-words-list=opengauss,dcc,dcf,cbb,gstor,cmake,datadir,binarylibs"
