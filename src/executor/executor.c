@@ -53,7 +53,7 @@ static volatile bool32 g_truncate_stopped = CM_FALSE;
 
 #define DCC_SEQUENCE_START          "0000000000"
 
-static void exc_dealing_put(msg_entry_t* entry);
+static bool32 exc_dealing_put(msg_entry_t* entry);
 
 /* inner API */
 bool8 exc_is_leader(void)
@@ -279,8 +279,13 @@ static status_t exc_get_text(const char* buff, uint32 size, text_t *text, uint32
         text->str = NULL;
         return CM_SUCCESS;
     }
+    uint32 text_size = CM_ALIGN4(text->len);
+    if (text_size < text->len || text_size > size - *offset) {
+        LOG_RUN_ERR("[EXC] The length is over with remain size for parsing buff.");
+        return CM_ERROR;
+    }
     text->str = (char *)(buff + *offset);
-    *offset += CM_ALIGN4(text->len);
+    *offset += text_size;
     return CM_SUCCESS;
 }
 
@@ -310,6 +315,20 @@ static status_t exc_parse_request_info(const char* buf, uint32 size, msg_entry_t
         CM_RETURN_IFERR(exc_get_uint64(buf, size, (uint64 *)&entry->all_op.lease_op.renew_time, &offset));
     }
 
+    return CM_SUCCESS;
+}
+
+status_t exc_validate_request_info(const text_t *buf)
+{
+    if (buf->str == NULL || buf->len == 0) {
+        return CM_ERROR;
+    }
+
+    msg_entry_t entry = {0};
+    if (exc_parse_request_info(buf->str, buf->len, &entry) != CM_SUCCESS) {
+        CM_THROW_ERROR(ERR_INVALID_CMD_CONTENT, "command content is error");
+        return CM_ERROR;
+    }
     return CM_SUCCESS;
 }
 
@@ -507,7 +526,11 @@ int exc_cb_consensus_follow_notify(unsigned int stream_id, unsigned long long in
         return CM_ERROR;
     }
 
-    CM_RETURN_IFERR(exc_parse_request_info(entry->buf, total_size, entry));
+    status_t ret = exc_parse_request_info(entry->buf, total_size, entry);
+    if (ret != CM_SUCCESS) {
+        exc_entry_dec_ref(entry);
+        return ret;
+    }
     exc_append_db_task(entry);
 
     if ((entry->cmd == DCC_CMD_DELETE) ||
@@ -1560,10 +1583,11 @@ void exc_dealing_del(msg_entry_t* entry)
     exc_wr_handle_delete(DCC_SEQUENCE_TABLE_ID, (text_t *) ENTRY_K(entry), entry->all_op.del_op.is_prefix, &count);
 }
 
-static void exc_dealing_put(msg_entry_t* entry)
+static bool32 exc_dealing_put(msg_entry_t* entry)
 {
     exc_wr_handle_put(DCC_KV_TABLE_ID, (text_t *) ENTRY_K(entry), (text_t *) ENTRY_V(entry));
     exc_watch_notify(entry, DCC_WATCH_EVENT_PUT);
+    return CM_TRUE;
 }
 
 static void exc_dealing_lease(const msg_entry_t* entry)
@@ -1606,40 +1630,40 @@ static inline bool32 expect_value_exists(text_t* key, const text_t* expect_val)
     return CM_TRUE;
 }
 
-static inline void exc_dealing_cas(msg_entry_t* entry)
+static inline bool32 exc_dealing_cas(msg_entry_t* entry)
 {
     if (!expect_value_exists((text_t*)ENTRY_K(entry), &entry->all_op.put_op.expect_value)) {
         call_srv_callback(entry, CM_FALSE);
-        return;
+        return CM_FALSE;
     }
 
     call_srv_callback(entry, CM_TRUE);
-    exc_dealing_put(entry);
+    return exc_dealing_put(entry);
 }
 
-static void exc_dealing_sequence(msg_entry_t *entry)
+static bool32 exc_dealing_sequence(msg_entry_t *entry)
 {
     status_t ret = exc_write_sequence(entry);
     if (ret != CM_SUCCESS) {
         call_srv_callback(entry, CM_FALSE);
-        return;
+        return CM_FALSE;
     }
     call_srv_callback(entry, CM_TRUE);
-    exc_dealing_put(entry);
+    return exc_dealing_put(entry);
 }
 
-static inline void exc_dealing_create(msg_entry_t *entry)
+static inline bool32 exc_dealing_create(msg_entry_t *entry)
 {
     bool32 existed = CM_FALSE;
 
     status_t ret = key_existed((text_t *) ENTRY_K(entry), &existed);
     if (ret != CM_SUCCESS || existed) {
         call_srv_callback(entry, CM_FALSE);
-        return;
+        return CM_FALSE;
     }
     call_srv_callback(entry, CM_TRUE);
 
-    exc_dealing_put(entry);
+    return exc_dealing_put(entry);
 }
 
 static status_t exc_dealing_put_attach_lease(const msg_entry_t* entry)
@@ -1678,18 +1702,19 @@ static status_t exc_dealing_put_attach_lease(const msg_entry_t* entry)
 static void exc_dealing_single_entry(msg_entry_t* entry)
 {
     if (entry->cmd == DCC_CMD_PUT) {
+        bool32 put_succeeded = CM_FALSE;
         if (!CM_IS_EMPTY(&entry->all_op.put_op.expect_value)) {
-            exc_dealing_cas(entry);
+            put_succeeded = exc_dealing_cas(entry);
         } else {
             if (entry->all_op.put_op.not_existed) {
-                exc_dealing_create(entry);
+                put_succeeded = exc_dealing_create(entry);
             } else if (entry->all_op.put_op.sequence) {
-                exc_dealing_sequence(entry);
+                put_succeeded = exc_dealing_sequence(entry);
             } else {
-                exc_dealing_put(entry);
+                put_succeeded = exc_dealing_put(entry);
             }
         }
-        if (!CM_IS_EMPTY(&entry->all_op.put_op.leaseid)) {
+        if (put_succeeded && !CM_IS_EMPTY(&entry->all_op.put_op.leaseid)) {
             if (exc_dealing_put_attach_lease(entry) != CM_SUCCESS) {
                 LOG_DEBUG_ERR("[EXC] dealing put attach lease failed.");
             }
@@ -1933,9 +1958,7 @@ status_t exc_read_handle4table(void *handle, const char *table_name)
 
 status_t exc_put(void* handle, const text_t* buf, unsigned long long write_key, unsigned long long* index)
 {
-    if (buf->str == NULL || buf->len == 0) {
-        return CM_ERROR;
-    }
+    CM_RETURN_IFERR(exc_validate_request_info(buf));
 
     if (dcf_universal_write(EXC_STREAM_ID_DEFAULT, buf->str, buf->len, write_key, index) != CM_SUCCESS) {
         CM_THROW_ERROR(ERR_EXC_PUT_FAILED, "");
@@ -1980,9 +2003,7 @@ status_t exc_cursor_fetch(void* handle, text_t* result_key, text_t* result_value
 
 status_t exc_del(void* handle, const text_t* buf, unsigned long long write_key, unsigned long long* index)
 {
-    if (buf->str == NULL || buf->len == 0) {
-        return CM_ERROR;
-    }
+    CM_RETURN_IFERR(exc_validate_request_info(buf));
 
     if (dcf_universal_write(EXC_STREAM_ID_DEFAULT, buf->str, buf->len, write_key, index) != CM_SUCCESS) {
         CM_THROW_ERROR(ERR_EXC_DEL_FAILED, "");

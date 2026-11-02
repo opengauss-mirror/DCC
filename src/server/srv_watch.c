@@ -228,13 +228,31 @@ int srv_proc_watch_event(dcc_event_t *watch_event)
     watch_msg_queue_t *watch_que = g_dcc_watch_mgr->watch_que[watch_que_idx];
 
     cm_spin_lock(&watch_que->lock, NULL);
+    if (watch_que->que_len >= DCC_MAX_SESS_WATCH_QUE_DEPTH) {
+        uint32 que_len = watch_que->que_len;
+        int64 total_msg_cnt = cm_atomic_get(&g_dcc_watch_mgr->total_msg_cnt);
+        cm_spin_unlock(&watch_que->lock);
+        LOG_DEBUG_WAR("[WATCH] drop watch event due to queue limit, sid:%u que_id:%u que_len:%u total_msg_cnt:%lld",
+            watch_event->sid, watch_que_idx, que_len, total_msg_cnt);
+        srv_free_watch_node(watch_node);
+        return CM_SUCCESS;
+    }
+    int64 total_msg_cnt = cm_atomic_inc(&g_dcc_watch_mgr->total_msg_cnt);
+    if (total_msg_cnt > DCC_MAX_SESS_WATCH_TOTAL_CNT) {
+        total_msg_cnt = cm_atomic_dec(&g_dcc_watch_mgr->total_msg_cnt);
+        uint32 que_len = watch_que->que_len;
+        cm_spin_unlock(&watch_que->lock);
+        LOG_DEBUG_WAR("[WATCH] drop watch event due to backlog limit, sid:%u que_id:%u que_len:%u total_msg_cnt:%lld",
+            watch_event->sid, watch_que_idx, que_len, total_msg_cnt);
+        srv_free_watch_node(watch_node);
+        return CM_SUCCESS;
+    }
     biqueue_add_tail(&watch_que->que, QUEUE_NODE_OF(watch_node));
     (watch_que->que_len)++;
     cm_spin_unlock(&watch_que->lock);
-    (void)cm_atomic_inc(&g_dcc_watch_mgr->total_msg_cnt);
 
     LOG_DEBUG_INF("[WATCH] session enqued watch event: sid:%u que_id:%u que_len:%u total_msg_cnt:%lld",
-        watch_event->sid, watch_que_idx, watch_que->que_len, g_dcc_watch_mgr->total_msg_cnt);
+        watch_event->sid, watch_que_idx, watch_que->que_len, total_msg_cnt);
 
     cm_event_notify(&g_dcc_watch_mgr->event);
 

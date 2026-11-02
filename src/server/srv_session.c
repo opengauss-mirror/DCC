@@ -221,9 +221,36 @@ static status_t srv_sess_exec_children(session_t *session)
     return srv_send_query_rsp(session, session->qry_eof == 0 ? CM_FALSE : CM_TRUE, fetch_nums, ret);
 }
 
+static inline status_t srv_check_delete_request(const cs_packet_t *recv_pack)
+{
+    CM_CHECK_NULL_PTR(recv_pack);
+
+    cs_packet_t packet = *recv_pack;
+    uint32 cmd = 0;
+    uint32 is_prefix = 0;
+    uint32 key_size = 0;
+
+    packet.offset = sizeof(cs_packet_head_t);
+    CM_RETURN_IFERR(cs_get_int32(&packet, (int32 *)&cmd));
+    if (cmd != DCC_CMD_DELETE) {
+        CM_THROW_ERROR(ERR_INVALID_PARAMETER_VALUE, "");
+        return CM_ERROR;
+    }
+    CM_RETURN_IFERR(cs_get_int32(&packet, (int32 *)&is_prefix));
+    CM_RETURN_IFERR(cs_get_int32(&packet, (int32 *)&key_size));
+    if (is_prefix != 0 && key_size >= SRV_MAX_PREFIX_KEY_SIZE) {
+        CM_THROW_ERROR(ERR_INVALID_PARAMETER_VALUE, "");
+        return CM_ERROR;
+    }
+    return CM_SUCCESS;
+}
+
 static status_t srv_sess_exec_delete(session_t *session)
 {
     cs_packet_t *recv_pack = session->recv_pack;
+    if (srv_check_delete_request(recv_pack) != CM_SUCCESS) {
+        return srv_send_rsp(session, cm_get_error_code());
+    }
     text_t data_buf = {
         .len = recv_pack->head->size - sizeof(cs_packet_head_t),
         .str = recv_pack->buf + sizeof(cs_packet_head_t) };
@@ -243,11 +270,14 @@ static status_t srv_sess_exec_watch(session_t *session)
     if (decode_watch_request(recv_pack, &req) != CM_SUCCESS) {
         return srv_send_rsp(session, ERR_DECODE_REQUEST);
     }
+    if (req.session_id != session->id) {
+        return srv_send_rsp(session, ERR_INVALID_CMD_CONTENT);
+    }
     text_t watch_key = {0};
     text_t key = {.str = req.key, .len = req.key_size};
     dcc_option_t option = { 0 };
     option.watch_op.is_prefix = req.is_dir;
-    option.sid = req.session_id;
+    option.sid = session->id;
     status_t ret = exc_watch(session->stg_handle, &key, srv_proc_watch_event, &option, &watch_key);
     if (ret != CM_SUCCESS) {
         util_convert_exc_errno();
@@ -256,7 +286,7 @@ static status_t srv_sess_exec_watch(session_t *session)
         if (watch_key.str != NULL) {
             sess_watch_record_t *watch_record = (sess_watch_record_t *) exc_alloc(sizeof(sess_watch_record_t));
             watch_record->is_prefix = option.watch_op.is_prefix;
-            watch_record->session_id = req.session_id;
+            watch_record->session_id = session->id;
             watch_record->key.len = watch_key.len;
             watch_record->key.str = watch_key.str;
             watch_record->prev = NULL;
@@ -291,12 +321,15 @@ static status_t srv_sess_exec_unwatch(session_t *session)
     if (decode_watch_request(recv_pack, &req) != CM_SUCCESS) {
         return srv_send_rsp(session, ERR_DECODE_REQUEST);
     }
+    if (req.session_id != session->id) {
+        return srv_send_rsp(session, ERR_INVALID_CMD_CONTENT);
+    }
     text_t key = { .str = req.key, .len = req.key_size };
     dcc_option_t option = { 0 };
     sess_watch_record_t *cur = session->watch_head;
     sess_watch_record_t *to_deleted = NULL;
     while (cur != NULL) {
-        if (cm_text_equal(&cur->key, &key) && cur->is_prefix == req.is_dir && cur->session_id == req.session_id) {
+        if (cm_text_equal(&cur->key, &key) && cur->is_prefix == req.is_dir && cur->session_id == session->id) {
             to_deleted = cur;
             break;
         }
@@ -306,7 +339,7 @@ static status_t srv_sess_exec_unwatch(session_t *session)
         return srv_send_rsp(session, ERR_INVALID_CMD_CONTENT);
     }
     option.watch_op.is_prefix = to_deleted->is_prefix;
-    option.sid = to_deleted->session_id;
+    option.sid = session->id;
     status_t ret = exc_unwatch(session->stg_handle, &key, &option);
     if (ret == CM_SUCCESS) {
         srv_delete_record(&session->watch_head, to_deleted);
@@ -490,6 +523,22 @@ static srv_cmd_proc_t g_srv_cmd_processor[] = {
     [DCC_CMD_CEIL]       = NULL,
 };
 
+/*
+ * Commands allowed before the connection has upgraded to SSL.
+ * Everything else (KV / watch / lease) must run over an authenticated SSL pipe.
+ */
+static inline bool32 srv_cmd_requires_ssl(uint32 cmd)
+{
+    switch (cmd) {
+        case DCC_CMD_SSL:
+        case DCC_CMD_LOOPBACK:
+        case DCC_CMD_DISCONNECT:
+            return CM_FALSE;
+        default:
+            return CM_TRUE;
+    }
+}
+
 static inline void srv_process_init_session(session_t *session)
 {
     cs_init_get(session->recv_pack);
@@ -528,6 +577,12 @@ status_t srv_process_command(session_t *session)
     if (cmd == DCC_CMD_UNKONOW || cmd >= DCC_CMD_CEIL) {
         LOG_DEBUG_ERR("[SESS] process recv msg command:%u invalid", cmd);
         return srv_send_rsp(session, ERR_INVALID_CMD_TYPE);
+    }
+
+    if (srv_cmd_requires_ssl(cmd) &&
+        (session->pipe == NULL || session->pipe->type != CS_TYPE_SSL)) {
+        LOG_DEBUG_ERR("[SESS] reject unauthenticated command:%u, sessId:%u", cmd, session->id);
+        return srv_send_rsp(session, ERR_INSUFFICIENT_PRIV);
     }
 
     srv_cmd_proc_t cmd_proc_func = g_srv_cmd_processor[cmd];
